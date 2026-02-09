@@ -1,0 +1,150 @@
+/* Система учёта оборудования — адаптация дизайна */
+:root {
+  --header-green: #1b4332;
+  --header-green-hover: #2d6a4f;
+  --nav-bg: #f8f9fa;
+  --nav-active: #2d6a4f;
+  --nav-text: #495057;
+  --card-shadow: 0 1px 3px rgba(0,0,0,.08);
+  --btn-primary: #0d6efd;
+  --accent-orange: #fd7e14;
+  --body-bg: #e9ecef;
+}
+
+body {
+  background-color: var(--body-bg);
+  min-height: 100vh;
+}
+
+/* Верхняя полоса — тёмно-зелёная */
+.app-header {
+  background-color: var(--header-green);
+  color: #fff;
+  padding: 0.5rem 0;
+}
+.app-header .container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.app-header .app-title {
+  font-weight: 700;
+  font-size: 1.35rem;
+  margin: 0;
+  color: #fff;
+}
+.app-header .user-block {
+  text-align: right;
+  font-size: 0.95rem;
+}
+.app-header .user-block .admin-link {
+  color: #ffc107;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+.app-header .user-block .admin-link:hover {
+  color: #ffe066;
+}
+.app-header .logout-btn {
+  color: rgba(255,255,255,.9);
+  text-decoration: none;
+  font-size: 0.9rem;
+  margin-left: 0.75rem;
+}
+
+/* Навигация — светлая серая */
+.app-nav {
+  background-color: var(--nav-bg);
+  border-bottom: 1px solid #dee2e6;
+  padding: 0.4rem 0;
+}
+.app-nav .nav-inner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.app-nav .nav-link-custom {
+  color: var(--nav-text);
+  text-decoration: none;
+  padding: 0.4rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.95rem;
+}
+.app-nav .nav-link-custom:hover {
+  color: var(--header-green);
+  background-color: rgba(45, 106, 79, 0.08);
+}
+.app-nav .nav-link-custom.active {
+  color: var(--nav-active);
+  font-weight: 600;
+  border-bottom: 2px solid var(--nav-active);
+  border-radius: 0;
+}
+
+/* Основной контент — белая карточка */
+.main-content {
+  margin-top: 1.5rem;
+  margin-bottom: 2rem;
+}
+.content-card {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: var(--card-shadow);
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+}
+.content-card h1,
+.content-card .card-title {
+  color: #212529;
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+.content-card .card-subtitle {
+  color: #6c757d;
+  font-size: 0.95rem;
+  margin-bottom: 1rem;
+}
+
+/* Кнопки */
+.btn-primary-custom {
+  background-color: var(--btn-primary);
+  color: #fff;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+}
+.btn-primary-custom:hover {
+  background-color: #0b5ed7;
+  color: #fff;
+}
+.btn-success-custom {
+  background-color: #198754;
+  color: #fff;
+}
+.table thead th {
+  background-color: var(--nav-bg);
+  font-weight: 600;
+  color: #212529;
+}
+.alert-warning-custom {
+  background-color: #fff3cd;
+  border-color: #ffecb5;
+  color: #856404;
+}
+
+/* Кнопки прижаты к низу блоков — одинаковый уровень карточек */
+.content-card .card.h-100 {
+  display: flex;
+  flex-direction: column;
+}
+.content-card .card.h-100 .card-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.content-card .card.h-100 .card-body .btn {
+  margin-top: auto;
+  align-self: flex-start;
+}

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}{{ campaign.name }} — Инвентаризация{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="card-title">{{ campaign.name }}</h1>
+    <div>
+        <a href="{{ request.url_for('inventory_export', campaign_id=campaign.id) }}" class="btn btn-success">Скачать отчёт в Excel</a>
+        <a href="{{ request.url_for('inventory_list') }}" class="btn btn-outline-secondary">Назад</a>
+    </div>
+</div>
+<p class="text-muted">{{ campaign.description or '' }}</p>
+<p><strong>Начало:</strong> {{ campaign.started_at.strftime('%Y-%m-%d %H:%M') if campaign.started_at else '—' }}
+   <strong>Окончание:</strong> {{ campaign.finished_at.strftime('%Y-%m-%d %H:%M') if campaign.finished_at else '—' }}</p>
+<h3 class="h5 mt-4">Добавить позицию</h3>
+<form method="post" action="{{ request.url_for('inventory_add_item', campaign_id=campaign.id) }}" class="row g-2 mb-4">
+    <div class="col-auto">
+        <select name="asset_id" class="form-select">
+            <option value="">Оборудование (необязательно)</option>
+            {% for asset in assets %}
+            <option value="{{ asset.id }}">{{ asset.name }} {% if asset.serial_number %}({{ asset.serial_number }}){% endif %}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-auto">
+        <input type="text" name="expected_location" class="form-control" placeholder="Ожидаемое расположение">
+    </div>
+    <div class="col-auto">
+        <input type="text" name="notes" class="form-control" placeholder="Примечание">
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-primary">Добавить</button>
+    </div>
+</form>
+<h3 class="h5 mt-4">Позиции</h3>
+<div class="table-responsive">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Оборудование</th>
+                <th>Ожидаемое расположение</th>
+                <th>Найден</th>
+                <th>Дата обнаружения</th>
+                <th>Примечание</th>
+                <th>Действия</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in campaign.items %}
+            <tr>
+                <td>{{ item.id }}</td>
+                <td>{% if item.asset %}<a href="{{ request.url_for('asset_detail', asset_id=item.asset.id) }}">{{ item.asset.name }}</a>{% else %}—{% endif %}</td>
+                <td>{{ item.expected_location or '—' }}</td>
+                <td>{% if item.found %}<span class="badge bg-success">Да</span>{% else %}<span class="badge bg-secondary">Нет</span>{% endif %}</td>
+                <td>{{ item.found_at.strftime('%Y-%m-%d %H:%M') if item.found_at else '—' }}</td>
+                <td>{{ item.notes or '—' }}</td>
+                <td>{% if not item.found %}<form method="post" action="{{ request.url_for('inventory_mark_found', campaign_id=campaign.id, item_id=item.id) }}" style="display:inline;"><button type="submit" class="btn btn-sm btn-success">Отметить найденным</button></form>{% endif %}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-muted">Нет позиций</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

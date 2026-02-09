@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}{{ asset.name }} — Система учёта оборудования{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="card-title">Карточка оборудования</h1>
+    <div>
+        <a href="{{ request.url_for('asset_edit', asset_id=asset.id) }}" class="btn btn-primary">Внести изменения</a>
+        <a href="{{ request.url_for('assets_list') }}" class="btn btn-outline-secondary">К списку</a>
+    </div>
+</div>
+{% if is_inactive %}
+<div class="alert alert-warning-custom alert">Устройство неактивно (нет недавней активности).</div>
+{% endif %}
+<dl class="row mb-4">
+    <dt class="col-sm-3">Инв. номер / ID</dt><dd class="col-sm-9">{{ asset.id }}</dd>
+    <dt class="col-sm-3">Название</dt><dd class="col-sm-9">{{ asset.name }}</dd>
+    <dt class="col-sm-3">Серийный номер</dt><dd class="col-sm-9">{{ asset.serial_number or '—' }}</dd>
+    <dt class="col-sm-3">Тип / Модель</dt><dd class="col-sm-9">{{ asset.asset_type or '—' }}</dd>
+    <dt class="col-sm-3">Расположение</dt><dd class="col-sm-9">{{ asset.location or '—' }}</dd>
+    <dt class="col-sm-3">Статус</dt><dd class="col-sm-9"><span class="badge bg-secondary">{{ asset.status.value }}</span></dd>
+    <dt class="col-sm-3">Последняя активность</dt><dd class="col-sm-9">{{ asset.last_seen_at.strftime('%Y-%m-%d %H:%M') if asset.last_seen_at else '—' }}</dd>
+    <dt class="col-sm-3">Описание</dt><dd class="col-sm-9">{{ asset.description or '—' }}</dd>
+</dl>
+<h3 class="h5 mt-4">Добавить событие</h3>
+<form method="post" action="{{ request.url_for('asset_add_event', asset_id=asset.id) }}" class="row g-2 mb-4">
+    <div class="col-auto">
+        <select name="event_type" class="form-select" required>
+            {% for t in event_type_options %}
+            <option value="{{ t.value }}">{{ t.label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col">
+        <input type="text" name="description" class="form-control" placeholder="Комментарий">
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-primary">Добавить</button>
+    </div>
+</form>
+<h3 class="h5 mt-4">История изменений</h3>
+<div class="table-responsive">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Дата</th>
+                <th>Тип события</th>
+                <th>Описание</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for e in events %}
+            <tr>
+                <td>{{ e.created_at.strftime('%Y-%m-%d %H:%M') if e.created_at else '—' }}</td>
+                <td><span class="badge bg-info">{{ event_type_labels.get(e.event_type.value, e.event_type.value) if event_type_labels else e.event_type.value }}</span></td>
+                <td>{{ e.description or '—' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3" class="text-muted">Нет событий</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

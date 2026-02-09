@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Оборудование — Система учёта оборудования{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="card-title">Оборудование</h1>
+    <a href="{{ request.url_for('asset_create') }}" class="btn btn-primary">+ Добавить</a>
+</div>
+<p class="card-subtitle">Общий список. Введите параметры для поиска по названию, типу или расположению.</p>
+<form method="get" class="row g-3 mb-4">
+    <div class="col-auto">
+        <input type="text" name="name" class="form-control" placeholder="Название" value="{{ filters.name or '' }}">
+    </div>
+    <div class="col-auto">
+        <select name="status" class="form-select">
+            <option value="">Все статусы</option>
+            {% for s in status_choices %}
+            <option value="{{ s.value }}" {% if filters.status == s %}selected{% endif %}>{{ status_labels.get(s.value, s.value) }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-auto">
+        <input type="text" name="asset_type" class="form-control" placeholder="Тип" value="{{ filters.asset_type or '' }}">
+    </div>
+    <div class="col-auto">
+        <input type="text" name="location" class="form-control" placeholder="Расположение" value="{{ filters.location or '' }}">
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-primary">Найти</button>
+    </div>
+    <div class="col-auto">
+        <a href="{{ request.url_for('assets_export') }}" class="btn btn-success">Экспорт в Excel</a>
+    </div>
+</form>
+<div class="table-responsive">
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Название</th>
+                <th>Серийный номер</th>
+                <th>Тип</th>
+                <th>Расположение</th>
+                <th>Статус</th>
+                <th>Последняя активность</th>
+                <th>Действие</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for asset in assets %}
+            <tr class="{% if is_inactive_fn(asset) %}table-warning{% endif %}">
+                <td>{{ asset.id }}</td>
+                <td><a href="{{ request.url_for('asset_detail', asset_id=asset.id) }}">{{ asset.name }}</a></td>
+                <td>{{ asset.serial_number or '—' }}</td>
+                <td>{{ asset.asset_type or '—' }}</td>
+                <td>{{ asset.location or '—' }}</td>
+                <td><span class="badge bg-secondary">{{ status_labels.get(asset.status.value, asset.status.value) }}</span></td>
+                <td>{{ asset.last_seen_at.strftime('%Y-%m-%d %H:%M') if asset.last_seen_at else '—' }}</td>
+                <td><a href="{{ request.url_for('asset_detail', asset_id=asset.id) }}" class="btn btn-sm btn-outline-primary">Открыть</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8" class="text-muted">Нет записей</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<p class="text-muted"><small>Жёлтым выделены устройства без недавней активности.</small></p>
+{% endblock %}

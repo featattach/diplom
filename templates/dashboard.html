@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Главная — Система учёта оборудования{% endblock %}
+{% block content %}
+<h1 class="card-title">Главная страница</h1>
+<p class="card-subtitle">Панель пользователя</p>
+<div class="row mt-4">
+    <div class="col-md-4 mb-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">Оборудование</h5>
+                <p class="card-text display-6">{{ assets_count }}</p>
+                <a href="{{ request.url_for('assets_list') }}" class="btn btn-primary">Перейти</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">Инвентаризация</h5>
+                <p class="card-text display-6">{{ campaigns_count }}</p>
+                <a href="{{ request.url_for('inventory_list') }}" class="btn btn-primary">Перейти</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">Отчёты</h5>
+                <p class="card-text">Статистика и экспорт</p>
+                <a href="{{ request.url_for('reports') }}" class="btn btn-primary">Открыть</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

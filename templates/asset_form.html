@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{% if asset %}Редактирование оборудования{% else %}Добавить оборудование{% endif %} — Система учёта оборудования{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="card-title">{% if asset %}Редактирование оборудования{% else %}Добавить оборудование{% endif %}</h1>
+    <a href="{{ request.url_for('assets_list') }}" class="btn btn-outline-secondary">К списку</a>
+</div>
+<form method="post" action="{% if asset %}{{ request.url_for('asset_edit_post', asset_id=asset.id) }}{% else %}{{ request.url_for('asset_create_post') }}{% endif %}">
+    <div class="mb-3">
+        <label class="form-label">Название *</label>
+        <input type="text" name="name" class="form-control" value="{{ asset.name if asset else '' }}" required>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Серийный номер</label>
+        <input type="text" name="serial_number" class="form-control" value="{{ asset.serial_number if asset and asset.serial_number else '' }}">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Тип / Модель</label>
+        <input type="text" name="asset_type" class="form-control" value="{{ asset.asset_type if asset and asset.asset_type else '' }}">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Расположение</label>
+        <input type="text" name="location" class="form-control" value="{{ asset.location if asset and asset.location else '' }}">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Статус *</label>
+        <select name="status" class="form-select" required>
+            {% for s in status_choices %}
+            <option value="{{ s.value }}" {% if asset and asset.status == s %}selected{% elif not asset and s.value == 'active' %}selected{% endif %}>{{ status_labels.get(s.value, s.value) }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Последняя активность</label>
+        <input type="datetime-local" name="last_seen_at" class="form-control" value="{% if asset and asset.last_seen_at %}{{ asset.last_seen_at.strftime('%Y-%m-%dT%H:%M') }}{% endif %}">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Описание</label>
+        <textarea name="description" class="form-control" rows="3">{{ asset.description if asset and asset.description else '' }}</textarea>
+    </div>
+    <button type="submit" class="btn btn-primary">{% if asset %}Сохранить{% else %}Создать{% endif %}</button>
+    <a href="{{ request.url_for('assets_list') }}" class="btn btn-outline-secondary">Отмена</a>
+</form>
+{% endblock %}

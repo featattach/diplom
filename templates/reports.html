@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Отчёты — Система учёта оборудования{% endblock %}
+{% block content %}
+<h1 class="card-title">Экспорт отчётов в Excel</h1>
+<p class="card-subtitle">Выберите тип отчёта и при необходимости временной диапазон для экспорта данных в формате Excel (.xlsx).</p>
+<div class="row mt-4">
+    <div class="col-md-6 mb-3">
+        <div class="card h-100">
+            <div class="card-header bg-light">Оборудование</div>
+            <div class="card-body">
+                <p><strong>Всего единиц:</strong> {{ total_assets }}</p>
+                <ul class="list-unstyled">
+                    {% for s in status_enum %}
+                    <li>{{ status_labels.get(s.value, s.value) }}: {{ status_counts.get(s, 0) }}</li>
+                    {% endfor %}
+                </ul>
+                <a href="{{ request.url_for('assets_export') }}" class="btn btn-primary">Скачать отчёт в Excel</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 mb-3">
+        <div class="card h-100">
+            <div class="card-header bg-light">Инвентаризация</div>
+            <div class="card-body">
+                <p><strong>Кампаний:</strong> {{ total_campaigns }}</p>
+                <a href="{{ request.url_for('inventory_list') }}" class="btn btn-primary">К списку кампаний</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
