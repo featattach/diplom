@@ -32,21 +32,22 @@ def upgrade() -> None:
             sa.PrimaryKeyConstraint("id"),
         )
 
-    # Столбец company_id также мог появиться раньше, поэтому проверяем схему.
+    # SQLite не поддерживает ADD CONSTRAINT — добавляем столбец и FK через batch.
     columns = [c["name"] for c in insp.get_columns("assets")]
     if "company_id" not in columns:
-        op.add_column("assets", sa.Column("company_id", sa.Integer(), nullable=True))
-        op.create_foreign_key(
-            "fk_assets_company_id",
-            "assets",
-            "companies",
-            ["company_id"],
-            ["id"],
-            ondelete="SET NULL",
-        )
+        with op.batch_alter_table("assets", schema=None) as batch_op:
+            batch_op.add_column(sa.Column("company_id", sa.Integer(), nullable=True))
+            batch_op.create_foreign_key(
+                "fk_assets_company_id",
+                "companies",
+                ["company_id"],
+                ["id"],
+                ondelete="SET NULL",
+            )
 
 
 def downgrade() -> None:
-    op.drop_constraint("fk_assets_company_id", "assets", type_="foreignkey")
-    op.drop_column("assets", "company_id")
+    with op.batch_alter_table("assets", schema=None) as batch_op:
+        batch_op.drop_constraint("fk_assets_company_id", type_="foreignkey")
+        batch_op.drop_column("company_id")
     op.drop_table("companies")

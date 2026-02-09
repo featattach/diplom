@@ -1,0 +1,2 @@
+# Скрипты должны быть с LF, иначе в Linux/контейнере "no such file or directory"
+*.sh text eol=lf

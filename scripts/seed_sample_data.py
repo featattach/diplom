@@ -130,6 +130,7 @@ def main():
                     serial_number=a.get("serial_number"),
                     status=AssetStatus.active,
                     company_id=company_id,
+                    last_seen_at=datetime.utcnow(),  # чтобы на дашборде отображались как «активные» (по последней активности)
                     cpu=a.get("cpu"),
                     ram=a.get("ram"),
                     disk1_type=a.get("disk1_type"),
@@ -143,6 +144,15 @@ def main():
                 assets_created += 1
         session.commit()
         print(f"Создано единиц техники: {assets_created}")
+
+    # Чтобы после сида «alembic upgrade head» не пытался заново создавать таблицы
+    try:
+        from alembic.config import Config
+        from alembic import command
+        alembic_cfg = Config(str(BASE_DIR / "alembic.ini"))
+        command.stamp(alembic_cfg, "head")
+    except Exception:
+        pass  # если alembic недоступен или нет alembic.ini — не ломаем сидер
 
     print("Готово. Можно открыть раздел «Инвентаризация» и карточки организаций/оборудования.")
 
