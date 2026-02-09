@@ -8,31 +8,41 @@ from openpyxl.utils import get_column_letter
 from app.models import Asset, InventoryCampaign, InventoryItem
 
 
+# Кириллические заголовки для экспорта оборудования
+ASSET_EXPORT_HEADERS = [
+    "ID", "Название", "Модель", "Тип техники", "Организация", "Серийный номер",
+    "Категория", "Расположение", "Статус", "Последняя активность", "Дата создания",
+]
+
 def export_assets_xlsx(assets: list[Asset]) -> BytesIO:
     wb = Workbook()
     ws = wb.active
-    ws.title = "Assets"
+    ws.title = "Оборудование"
 
-    headers = ["ID", "Name", "Model", "Equipment kind", "Serial", "Type", "Location", "Status", "Last seen", "Created"]
-    for col, h in enumerate(headers, 1):
+    for col, h in enumerate(ASSET_EXPORT_HEADERS, 1):
         cell = ws.cell(row=1, column=col, value=h)
         cell.font = Font(bold=True)
         cell.fill = PatternFill(start_color="DDDDDD", end_color="DDDDDD", fill_type="solid")
 
+    status_labels = {"active": "Активно", "inactive": "Неактивно", "maintenance": "На обслуживании", "retired": "Списано"}
     for row, asset in enumerate(assets, 2):
+        company_name = ""
+        if getattr(asset, "company", None) and asset.company:
+            company_name = asset.company.name
         ws.cell(row=row, column=1, value=asset.id)
         ws.cell(row=row, column=2, value=asset.name)
         ws.cell(row=row, column=3, value=getattr(asset, "model", None) or "")
         ws.cell(row=row, column=4, value=getattr(asset, "equipment_kind", None) or "")
-        ws.cell(row=row, column=5, value=asset.serial_number or "")
-        ws.cell(row=row, column=6, value=asset.asset_type or "")
-        ws.cell(row=row, column=7, value=asset.location or "")
-        ws.cell(row=row, column=8, value=asset.status.value if asset.status else "")
-        ws.cell(row=row, column=9, value=asset.last_seen_at.isoformat() if asset.last_seen_at else "")
-        ws.cell(row=row, column=10, value=asset.created_at.isoformat() if asset.created_at else "")
+        ws.cell(row=row, column=5, value=company_name)
+        ws.cell(row=row, column=6, value=asset.serial_number or "")
+        ws.cell(row=row, column=7, value=asset.asset_type or "")
+        ws.cell(row=row, column=8, value=asset.location or "")
+        ws.cell(row=row, column=9, value=status_labels.get(asset.status.value, asset.status.value) if asset.status else "")
+        ws.cell(row=row, column=10, value=asset.last_seen_at.isoformat() if asset.last_seen_at else "")
+        ws.cell(row=row, column=11, value=asset.created_at.isoformat() if asset.created_at else "")
 
-    for col in range(1, len(headers) + 1):
-        ws.column_dimensions[get_column_letter(col)].width = 16
+    for col in range(1, len(ASSET_EXPORT_HEADERS) + 1):
+        ws.column_dimensions[get_column_letter(col)].width = 18
 
     buf = BytesIO()
     wb.save(buf)

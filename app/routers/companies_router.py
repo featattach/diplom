@@ -138,3 +138,19 @@ async def company_edit(
     company.short_info = short_info.strip() if short_info else None
     await db.flush()
     return RedirectResponse(url=f"/companies/{company_id}", status_code=302)
+
+
+@router.post("/companies/{company_id:int}/delete", name="company_delete")
+async def company_delete(
+    company_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
+):
+    from fastapi import HTTPException
+    result = await db.execute(select(Company).where(Company.id == company_id))
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(404, "Organization not found")
+    await db.delete(company)
+    await db.flush()
+    return RedirectResponse(url="/inventory", status_code=302)

@@ -6,10 +6,33 @@
     <div>
         {% if user.role.value in ['admin', 'user'] %}
         <a href="{{ request.url_for('company_edit', company_id=company.id) }}" class="btn btn-primary">Редактировать</a>
+        <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteCompanyModal">Удалить организацию</button>
         {% endif %}
         <a href="{{ request.url_for('companies_list') }}" class="btn btn-outline-secondary">К списку</a>
     </div>
 </div>
+
+{% if user.role.value in ['admin', 'user'] %}
+<div class="modal fade" id="deleteCompanyModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Удалить организацию?</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                Организация <strong>{{ company.name }}</strong> будет удалена. Техника и кампании, привязанные к ней, останутся в системе, но привязка к организации снимется.
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <form method="post" action="{{ request.url_for('company_delete', company_id=company.id) }}" class="d-inline">
+                    <button type="submit" class="btn btn-danger">Удалить</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 {% if company.short_info %}
 <div class="mb-4">
     <h5 class="h6 text-muted">Краткая информация</h5>

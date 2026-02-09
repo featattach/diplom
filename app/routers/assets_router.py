@@ -76,31 +76,45 @@ async def assets_list(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_user),
     name: str | None = Query(None),
-    status: AssetStatus | None = Query(None),
-    asset_type: str | None = Query(None),
+    status: str | None = Query(None),
     equipment_kind: str | None = Query(None),
     location: str | None = Query(None),
+    company_id: str | None = Query(None),
 ):
-    q = select(Asset).order_by(Asset.id)
+    status_filter = None
+    if status and status.strip() and status.strip() in ("active", "inactive", "maintenance", "retired"):
+        status_filter = AssetStatus(status.strip())
+    q = select(Asset).options(selectinload(Asset.company)).order_by(Asset.id)
     if name:
         q = q.where(Asset.name.ilike(f"%{name}%"))
-    if status is not None:
-        q = q.where(Asset.status == status)
-    if asset_type:
-        q = q.where(Asset.asset_type.ilike(f"%{asset_type}%"))
+    if status_filter is not None:
+        q = q.where(Asset.status == status_filter)
     if equipment_kind:
         q = q.where(Asset.equipment_kind == equipment_kind)
-    if location:
-        q = q.where(Asset.location.ilike(f"%{location}%"))
+    if location and location.strip():
+        q = q.where(Asset.location == location.strip())
+    if company_id and company_id.strip():
+        try:
+            q = q.where(Asset.company_id == int(company_id.strip()))
+        except ValueError:
+            pass
     result = await db.execute(q)
     assets = list(result.scalars().all())
+    companies_result = await db.execute(select(Company).order_by(Company.name))
+    companies = list(companies_result.scalars().all())
+    locations_result = await db.execute(
+        select(Asset.location).where(Asset.location.isnot(None)).where(Asset.location != "").distinct().order_by(Asset.location)
+    )
+    location_choices = [r[0] for r in locations_result.all()]
     return templates.TemplateResponse(
         "assets_list.html",
         {
             "request": request,
             "user": current_user,
             "assets": assets,
-            "filters": {"name": name, "status": status, "asset_type": asset_type, "equipment_kind": equipment_kind, "location": location},
+            "companies": companies,
+            "location_choices": location_choices,
+            "filters": {"name": name, "status": status, "equipment_kind": equipment_kind, "location": location or "", "company_id": company_id or ""},
             "status_choices": AssetStatus,
             "status_labels": STATUS_LABELS,
             "equipment_kind_choices": EQUIPMENT_KIND_CHOICES,
@@ -115,7 +129,7 @@ async def assets_export(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_user),
 ):
-    result = await db.execute(select(Asset).order_by(Asset.id))
+    result = await db.execute(select(Asset).options(selectinload(Asset.company)).order_by(Asset.id))
     assets = list(result.scalars().all())
     buf = export_assets_xlsx(assets)
     return StreamingResponse(

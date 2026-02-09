@@ -7,7 +7,7 @@
     <a href="{{ request.url_for('asset_create') }}" class="btn btn-primary">+ Добавить</a>
     {% endif %}
 </div>
-<p class="card-subtitle">Общий список. Введите параметры для поиска по названию, типу или расположению.</p>
+<p class="card-subtitle">Фильтры по спискам; название можно ввести вручную.</p>
 <form method="get" class="row g-3 mb-4">
     <div class="col-auto">
         <input type="text" name="name" class="form-control" placeholder="Название" value="{{ filters.name or '' }}">
@@ -29,10 +29,20 @@
         </select>
     </div>
     <div class="col-auto">
-        <input type="text" name="asset_type" class="form-control" placeholder="Категория" value="{{ filters.asset_type or '' }}">
+        <select name="location" class="form-select">
+            <option value="">Все расположения</option>
+            {% for loc in location_choices %}
+            <option value="{{ loc }}" {% if filters.location == loc %}selected{% endif %}>{{ loc }}</option>
+            {% endfor %}
+        </select>
     </div>
     <div class="col-auto">
-        <input type="text" name="location" class="form-control" placeholder="Расположение" value="{{ filters.location or '' }}">
+        <select name="company_id" class="form-select">
+            <option value="">Все организации</option>
+            {% for c in companies %}
+            <option value="{{ c.id }}" {% if filters.company_id == c.id|string %}selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+        </select>
     </div>
     <div class="col-auto">
         <button type="submit" class="btn btn-primary">Найти</button>
@@ -49,6 +59,7 @@
                 <th>Название</th>
                 <th>Модель</th>
                 <th>Тип техники</th>
+                <th>Организация</th>
                 <th>Серийный номер</th>
                 <th>Расположение</th>
                 <th>Статус</th>
@@ -63,6 +74,7 @@
                 <td><a href="{{ request.url_for('asset_detail', asset_id=asset.id) }}">{{ asset.name }}</a></td>
                 <td>{{ asset.model or '—' }}</td>
                 <td>{{ equipment_kind_labels.get(asset.equipment_kind, asset.equipment_kind or '—') }}</td>
+                <td>{% if asset.company %}<a href="{{ request.url_for('company_detail', company_id=asset.company.id) }}">{{ asset.company.name }}</a>{% else %}—{% endif %}</td>
                 <td>{{ asset.serial_number or '—' }}</td>
                 <td>{{ asset.location or '—' }}</td>
                 <td><span class="badge bg-secondary">{{ status_labels.get(asset.status.value, asset.status.value) }}</span></td>
@@ -70,7 +82,7 @@
                 <td><a href="{{ request.url_for('asset_detail', asset_id=asset.id) }}" class="btn btn-sm btn-outline-primary">Открыть</a></td>
             </tr>
             {% else %}
-            <tr><td colspan="9" class="text-muted">Нет записей</td></tr>
+            <tr><td colspan="10" class="text-muted">Нет записей</td></tr>
             {% endfor %}
         </tbody>
     </table>
