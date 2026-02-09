@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.database import engine, Base, get_db
-from app.routers import auth_router, dashboard_router, assets_router, movements_router, inventory_router, reports_router
+from app.routers import auth_router, dashboard_router, assets_router, movements_router, inventory_router, reports_router, admin_router, companies_router
 
 app = FastAPI(title="Asset Management")
 
@@ -13,7 +13,9 @@ app.include_router(dashboard_router.router)
 app.include_router(assets_router.router)
 app.include_router(movements_router.router)
 app.include_router(inventory_router.router)
+app.include_router(companies_router.router)
 app.include_router(reports_router.router)
+app.include_router(admin_router.router)
 
 static_dir = Path(__file__).resolve().parent.parent / "static"
 if static_dir.exists():

@@ -5,24 +5,111 @@
     <h1 class="card-title">{% if asset %}Редактирование оборудования{% else %}Добавить оборудование{% endif %}</h1>
     <a href="{{ request.url_for('assets_list') }}" class="btn btn-outline-secondary">К списку</a>
 </div>
-<form method="post" action="{% if asset %}{{ request.url_for('asset_edit_post', asset_id=asset.id) }}{% else %}{{ request.url_for('asset_create_post') }}{% endif %}">
+<form method="post" action="{% if asset %}{{ request.url_for('asset_edit_post', asset_id=asset.id) }}{% else %}{{ request.url_for('asset_create_post') }}{% endif %}" id="assetForm">
     <div class="mb-3">
         <label class="form-label">Название *</label>
         <input type="text" name="name" class="form-control" value="{{ asset.name if asset else '' }}" required>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Тип техники</label>
+        <select name="equipment_kind" id="equipment_kind" class="form-select">
+            <option value="">— не выбран —</option>
+            {% for k in equipment_kind_choices %}
+            <option value="{{ k.value }}" {% if asset and asset.equipment_kind == k.value %}selected{% endif %}>{{ k.label }}</option>
+            {% endfor %}
+        </select>
+        <small class="text-muted">Системный блок (без диагонали), неттоп, ноутбук, монитор, МФУ, принтер, сканер, коммутатор, сервер — от типа зависят поля ниже</small>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Модель <span id="model_required" class="text-danger" style="display:none;">*</span></label>
+        <input type="text" name="model" id="model" class="form-control" value="{{ asset.model if asset and asset.model else '' }}">
     </div>
     <div class="mb-3">
         <label class="form-label">Серийный номер</label>
         <input type="text" name="serial_number" class="form-control" value="{{ asset.serial_number if asset and asset.serial_number else '' }}">
     </div>
     <div class="mb-3">
-        <label class="form-label">Тип / Модель</label>
-        <input type="text" name="asset_type" class="form-control" value="{{ asset.asset_type if asset and asset.asset_type else '' }}">
+        <label class="form-label">Категория / прочее</label>
+        <input type="text" name="asset_type" class="form-control" value="{{ asset.asset_type if asset and asset.asset_type else '' }}" placeholder="Доп. тип или категория">
     </div>
     <div class="mb-3">
         <label class="form-label">Расположение</label>
         <input type="text" name="location" class="form-control" value="{{ asset.location if asset and asset.location else '' }}">
     </div>
     <div class="mb-3">
+        <label class="form-label">Организация</label>
+        <select name="company_id" class="form-select">
+            <option value="">— не выбрана —</option>
+            {% for c in companies %}
+            <option value="{{ c.id }}" {% if asset and asset.company_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <h5 class="mt-4 mb-2">Технические характеристики</h5>
+    <p class="text-muted small">Заполняются для системного блока, неттопа, ноутбука, сервера.</p>
+    <div class="row" id="tech_rack" style="display:none;">
+        <div class="col-md-6 mb-3">
+            <label class="form-label">Юниты (U)</label>
+            <input type="number" name="rack_units" id="rack_units" class="form-control" min="1" max="50" value="{{ asset.rack_units if asset and asset.rack_units else '' }}" placeholder="высота в стойке">
+        </div>
+    </div>
+    <div class="row" id="tech_common">
+        <div class="col-md-6 mb-3">
+            <label class="form-label">Процессор</label>
+            <input type="text" name="cpu" class="form-control" value="{{ asset.cpu if asset and asset.cpu else '' }}">
+        </div>
+        <div class="col-md-6 mb-3">
+            <label class="form-label">ОЗУ</label>
+            <input type="text" name="ram" class="form-control" value="{{ asset.ram if asset and asset.ram else '' }}" placeholder="например 16 ГБ DDR4">
+        </div>
+        <div class="col-md-6 mb-3">
+            <label class="form-label">Диск 1 — тип</label>
+            <select name="disk1_type" class="form-select">
+                <option value="">—</option>
+                <option value="SSD" {% if asset and asset.disk1_type == 'SSD' %}selected{% endif %}>SSD</option>
+                <option value="HDD" {% if asset and asset.disk1_type == 'HDD' %}selected{% endif %}>HDD</option>
+            </select>
+        </div>
+        <div class="col-md-6 mb-3">
+            <label class="form-label">Диск 1 — объём</label>
+            <input type="text" name="disk1_capacity" class="form-control" value="{{ asset.disk1_capacity if asset and asset.disk1_capacity else '' }}" placeholder="например 512 ГБ">
+        </div>
+        <div class="col-md-6 mb-3">
+            <label class="form-label">Сетевая карта</label>
+            <input type="text" name="network_card" class="form-control" value="{{ asset.network_card if asset and asset.network_card else '' }}">
+        </div>
+        <div class="col-md-6 mb-3">
+            <label class="form-label">Материнская плата</label>
+            <input type="text" name="motherboard" class="form-control" value="{{ asset.motherboard if asset and asset.motherboard else '' }}">
+        </div>
+        <div class="col-md-6 mb-3">
+            <label class="form-label">Блок питания</label>
+            <input type="text" name="power_supply" class="form-control" value="{{ asset.power_supply if asset and asset.power_supply else '' }}">
+        </div>
+        <div class="col-md-6 mb-3">
+            <label class="form-label">Монитор (диагональ)</label>
+            <input type="text" name="monitor_diagonal" class="form-control" value="{{ asset.monitor_diagonal if asset and asset.monitor_diagonal else '' }}" placeholder="например 24&quot;">
+        </div>
+    </div>
+    <div class="row" id="tech_screen" style="display:none;">
+        <div class="col-md-6 mb-3">
+            <label class="form-label">Диагональ экрана</label>
+            <input type="text" name="screen_diagonal" class="form-control" value="{{ asset.screen_diagonal if asset and asset.screen_diagonal else '' }}" placeholder="например 15.6&quot;">
+        </div>
+        <div class="col-md-6 mb-3">
+            <label class="form-label">Разрешение экрана</label>
+            <input type="text" name="screen_resolution" class="form-control" value="{{ asset.screen_resolution if asset and asset.screen_resolution else '' }}" placeholder="например 1920×1080">
+        </div>
+    </div>
+
+    <h5 class="mt-4 mb-2">Доп. устройства</h5>
+    <p class="text-muted small">Опционально: процессоры, диски, сетевые карты и т.д. (несколько штук одного типа).</p>
+    <input type="hidden" name="extra_components" id="extra_components" value="">
+    <div id="extra_components_container" class="mb-3"></div>
+    <button type="button" class="btn btn-outline-secondary btn-sm" id="add_extra_component">+ Добавить устройство</button>
+
+    <div class="mb-3 mt-4">
         <label class="form-label">Статус *</label>
         <select name="status" class="form-select" required>
             {% for s in status_choices %}
@@ -41,4 +128,86 @@
     <button type="submit" class="btn btn-primary">{% if asset %}Сохранить{% else %}Создать{% endif %}</button>
     <a href="{{ request.url_for('assets_list') }}" class="btn btn-outline-secondary">Отмена</a>
 </form>
+
+<script>
+(function() {
+  var kindSelect = document.getElementById('equipment_kind');
+  var modelInput = document.getElementById('model');
+  var modelRequired = document.getElementById('model_required');
+  var techCommon = document.getElementById('tech_common');
+  var techScreen = document.getElementById('tech_screen');
+  var techRack = document.getElementById('tech_rack');
+  var hasScreen = [{% for k in equipment_kind_has_screen %}"{{ k }}"{% if not loop.last %}, {% endif %}{% endfor %}];
+  var hasTech = [{% for k in equipment_kind_has_tech %}"{{ k }}"{% if not loop.last %}, {% endif %}{% endfor %}];
+  var needsRack = [{% for k in equipment_kind_needs_rack %}"{{ k }}"{% if not loop.last %}, {% endif %}{% endfor %}];
+
+  function updateForm() {
+    var kind = kindSelect.value;
+    var isTech = hasTech.indexOf(kind) !== -1;
+    var showScreen = hasScreen.indexOf(kind) !== -1;
+    var showRack = needsRack.indexOf(kind) !== -1;
+    techCommon.style.display = isTech ? 'flex' : 'none';
+    techScreen.style.display = showScreen ? 'flex' : 'none';
+    techRack.style.display = showRack ? 'flex' : 'none';
+    modelRequired.style.display = kind ? 'inline' : 'none';
+    if (kind) modelInput.setAttribute('required', 'required');
+    else modelInput.removeAttribute('required');
+  }
+  kindSelect.addEventListener('change', updateForm);
+  updateForm();
+})();
+
+(function() {
+  var container = document.getElementById('extra_components_container');
+  var hidden = document.getElementById('extra_components');
+  var addBtn = document.getElementById('add_extra_component');
+  var componentTypes = {{ extra_component_types | tojson }};
+  var initialList = {{ extra_components_list | tojson }};
+
+  function optionHtml() {
+    var s = '';
+    for (var i = 0; i < componentTypes.length; i++) {
+      s += '<option value="' + componentTypes[i].value + '">' + componentTypes[i].label + '</option>';
+    }
+    return s;
+  }
+
+  function syncHidden() {
+    var rows = container.querySelectorAll('.extra-component-row');
+    var arr = [];
+    rows.forEach(function(row) {
+      var typeSel = row.querySelector('select');
+      var nameInp = row.querySelector('input[type="text"]');
+      if (typeSel && nameInp && typeSel.value) {
+        arr.push({ type: typeSel.value, name: nameInp.value || '' });
+      }
+    });
+    hidden.value = JSON.stringify(arr);
+  }
+
+  function addRow(data) {
+    data = data || { type: 'cpu', name: '' };
+    var row = document.createElement('div');
+    row.className = 'extra-component-row input-group input-group-sm mb-2';
+    row.innerHTML =
+      '<select class="form-select" style="max-width:180px;">' + optionHtml() + '</select>' +
+      '<input type="text" class="form-control" placeholder="Модель / описание" value="' + (data.name || '').replace(/"/g, '&quot;') + '">' +
+      '<button type="button" class="btn btn-outline-danger">×</button>';
+    var sel = row.querySelector('select');
+    sel.value = data.type || 'cpu';
+    row.querySelector('button').addEventListener('click', function() {
+      row.remove();
+      syncHidden();
+    });
+    row.querySelector('select').addEventListener('change', syncHidden);
+    row.querySelector('input').addEventListener('input', syncHidden);
+    container.appendChild(row);
+    syncHidden();
+  }
+
+  addBtn.addEventListener('click', function() { addRow({}); });
+  initialList.forEach(function(item) { addRow(item); });
+  if (initialList.length === 0) syncHidden();
+})();
+</script>
 {% endblock %}

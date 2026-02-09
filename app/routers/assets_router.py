@@ -7,10 +7,10 @@ from sqlalchemy.orm import selectinload
 
 from app.config import INACTIVE_DAYS_THRESHOLD
 from app.database import get_db
-from app.models import Asset, AssetEvent
-from app.models.asset import AssetStatus, AssetEventType
-from app.auth import require_user
-from app.models.user import User
+from app.models import Asset, AssetEvent, Company
+from app.models.asset import AssetStatus, AssetEventType, EquipmentKind
+from app.auth import require_user, require_role
+from app.models.user import User, UserRole
 from app.templates_ctx import templates
 from app.services.export_xlsx import export_assets_xlsx
 
@@ -34,6 +34,34 @@ EVENT_TYPE_LABELS = {
 }
 EVENT_TYPE_OPTIONS = [{"value": k, "label": v} for k, v in EVENT_TYPE_LABELS.items()]
 
+EQUIPMENT_KIND_LABELS = {
+    "desktop": "Системный блок",
+    "nettop": "Неттоп",
+    "laptop": "Ноутбук",
+    "monitor": "Монитор",
+    "mfu": "МФУ",
+    "printer": "Принтер",
+    "scanner": "Сканер",
+    "switch": "Коммутатор",
+    "server": "Сервер",
+    "monoblock": "Моноблок",  # устаревший тип, для старых записей
+}
+EQUIPMENT_KIND_CHOICES = [{"value": k, "label": v} for k, v in EQUIPMENT_KIND_LABELS.items()]
+# Типы с экраном (диагональ/разрешение) — только ноутбук и монитор; системный блок без диагонали
+EQUIPMENT_KIND_HAS_SCREEN = ("laptop", "monitor")
+# Типы с полем «Юниты (U)» — только сервер
+EQUIPMENT_KIND_NEEDS_RACK = ("server",)
+# Типы с общими тех. полями (процессор, ОЗУ, диски и т.д.)
+EQUIPMENT_KIND_HAS_TECH = ("desktop", "nettop", "laptop", "server")
+# Типы доп. устройств (для блока «Доп. устройства»)
+EXTRA_COMPONENT_TYPES = [
+    {"value": "cpu", "label": "Процессор"},
+    {"value": "ram", "label": "ОЗУ"},
+    {"value": "disk", "label": "Диск"},
+    {"value": "network_card", "label": "Сетевая карта"},
+    {"value": "other", "label": "Прочее"},
+]
+
 
 def is_asset_inactive(asset: Asset) -> bool:
     if not asset.last_seen_at:
@@ -50,6 +78,7 @@ async def assets_list(
     name: str | None = Query(None),
     status: AssetStatus | None = Query(None),
     asset_type: str | None = Query(None),
+    equipment_kind: str | None = Query(None),
     location: str | None = Query(None),
 ):
     q = select(Asset).order_by(Asset.id)
@@ -59,6 +88,8 @@ async def assets_list(
         q = q.where(Asset.status == status)
     if asset_type:
         q = q.where(Asset.asset_type.ilike(f"%{asset_type}%"))
+    if equipment_kind:
+        q = q.where(Asset.equipment_kind == equipment_kind)
     if location:
         q = q.where(Asset.location.ilike(f"%{location}%"))
     result = await db.execute(q)
@@ -69,9 +100,11 @@ async def assets_list(
             "request": request,
             "user": current_user,
             "assets": assets,
-            "filters": {"name": name, "status": status, "asset_type": asset_type, "location": location},
+            "filters": {"name": name, "status": status, "asset_type": asset_type, "equipment_kind": equipment_kind, "location": location},
             "status_choices": AssetStatus,
             "status_labels": STATUS_LABELS,
+            "equipment_kind_choices": EQUIPMENT_KIND_CHOICES,
+            "equipment_kind_labels": EQUIPMENT_KIND_LABELS,
             "is_inactive_fn": is_asset_inactive,
         },
     )
@@ -102,13 +135,15 @@ async def asset_detail(
     result = await db.execute(
         select(Asset)
         .where(Asset.id == asset_id)
-        .options(selectinload(Asset.events))
+        .options(selectinload(Asset.events), selectinload(Asset.company))
     )
     asset = result.scalar_one_or_none()
     if not asset:
         from fastapi import HTTPException
         raise HTTPException(404, "Asset not found")
     events = sorted(asset.events, key=lambda e: e.created_at or datetime.min, reverse=True)
+    extra_components_list = _parse_extra_components(asset)
+    component_type_labels = {t["value"]: t["label"] for t in EXTRA_COMPONENT_TYPES}
     return templates.TemplateResponse(
         "asset_detail.html",
         {
@@ -119,6 +154,9 @@ async def asset_detail(
             "is_inactive": is_asset_inactive(asset),
             "event_type_options": EVENT_TYPE_OPTIONS,
             "event_type_labels": EVENT_TYPE_LABELS,
+            "equipment_kind_labels": EQUIPMENT_KIND_LABELS,
+            "extra_components_list": extra_components_list,
+            "component_type_labels": component_type_labels,
         },
     )
 
@@ -126,45 +164,117 @@ async def asset_detail(
 @router.get("/assets/create", name="asset_create")
 async def asset_create_form(
     request: Request,
-    current_user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
 ):
+    companies_result = await db.execute(select(Company).order_by(Company.name))
+    companies = list(companies_result.scalars().all())
     return templates.TemplateResponse(
         "asset_form.html",
         {
             "request": request,
             "user": current_user,
             "asset": None,
+            "companies": companies,
             "status_choices": AssetStatus,
             "status_labels": STATUS_LABELS,
+            "equipment_kind_choices": EQUIPMENT_KIND_CHOICES,
+            "equipment_kind_has_screen": EQUIPMENT_KIND_HAS_SCREEN,
+            "equipment_kind_needs_rack": EQUIPMENT_KIND_NEEDS_RACK,
+            "equipment_kind_has_tech": EQUIPMENT_KIND_HAS_TECH,
+            "extra_component_types": EXTRA_COMPONENT_TYPES,
+            "extra_components_list": [],
         },
     )
+
+
+def _parse_asset_form(
+    name, serial_number, asset_type, equipment_kind, model, location, status, description, last_seen_at,
+    cpu, ram, disk1_type, disk1_capacity, network_card, motherboard,
+    screen_diagonal, screen_resolution, power_supply, monitor_diagonal,
+    rack_units=None, extra_components_json=None, company_id=None,
+):
+    import json
+    from datetime import datetime
+    data = {
+        "name": name,
+        "serial_number": serial_number or None,
+        "asset_type": asset_type or None,
+        "equipment_kind": equipment_kind or None,
+        "model": model or None,
+        "location": location or None,
+        "status": status,
+        "description": description or None,
+        "last_seen_at": datetime.fromisoformat(last_seen_at) if last_seen_at else None,
+        "cpu": cpu or None,
+        "ram": ram or None,
+        "disk1_type": disk1_type or None,
+        "disk1_capacity": disk1_capacity or None,
+        "network_card": network_card or None,
+        "motherboard": motherboard or None,
+        "screen_diagonal": screen_diagonal or None,
+        "screen_resolution": screen_resolution or None,
+        "power_supply": power_supply or None,
+        "monitor_diagonal": monitor_diagonal or None,
+        "rack_units": int(rack_units) if rack_units not in (None, "") else None,
+        "company_id": int(company_id) if company_id not in (None, "") else None,
+    }
+    if extra_components_json:
+        try:
+            data["extra_components"] = json.dumps(json.loads(extra_components_json), ensure_ascii=False)
+        except (json.JSONDecodeError, TypeError):
+            data["extra_components"] = None
+    else:
+        data["extra_components"] = None
+    return data
+
+
+def _parse_extra_components(asset):
+    import json
+    if not getattr(asset, "extra_components", None):
+        return []
+    try:
+        return json.loads(asset.extra_components)
+    except (json.JSONDecodeError, TypeError):
+        return []
 
 
 @router.post("/assets/create", name="asset_create_post")
 async def asset_create(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_user),
+    current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
     name: str = Form(...),
     serial_number: str | None = Form(None),
     asset_type: str | None = Form(None),
+    equipment_kind: str | None = Form(None),
+    model: str | None = Form(None),
     location: str | None = Form(None),
     status: AssetStatus = Form(AssetStatus.active),
     description: str | None = Form(None),
     last_seen_at: str | None = Form(None),
+    cpu: str | None = Form(None),
+    ram: str | None = Form(None),
+    disk1_type: str | None = Form(None),
+    disk1_capacity: str | None = Form(None),
+    network_card: str | None = Form(None),
+    motherboard: str | None = Form(None),
+    screen_diagonal: str | None = Form(None),
+    screen_resolution: str | None = Form(None),
+    power_supply: str | None = Form(None),
+    monitor_diagonal: str | None = Form(None),
+    rack_units: str | None = Form(None),
+    extra_components: str | None = Form(None),
+    company_id: str | None = Form(None),
 ):
-    from datetime import datetime
-    asset = Asset(
-        name=name,
-        serial_number=serial_number if serial_number else None,
-        asset_type=asset_type if asset_type else None,
-        location=location if location else None,
-        status=status,
-        description=description if description else None,
-        last_seen_at=datetime.fromisoformat(last_seen_at) if last_seen_at else None,
+    data = _parse_asset_form(
+        name, serial_number, asset_type, equipment_kind, model, location, status, description, last_seen_at,
+        cpu, ram, disk1_type, disk1_capacity, network_card, motherboard,
+        screen_diagonal, screen_resolution, power_supply, monitor_diagonal,
+        rack_units=rack_units, extra_components_json=extra_components, company_id=company_id,
     )
+    asset = Asset(**data)
     db.add(asset)
     await db.flush()
-    # Create initial event
     event = AssetEvent(
         asset_id=asset.id,
         event_type=AssetEventType.created,
@@ -181,21 +291,30 @@ async def asset_edit_form(
     request: Request,
     asset_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_user),
+    current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
 ):
     result = await db.execute(select(Asset).where(Asset.id == asset_id))
     asset = result.scalar_one_or_none()
     if not asset:
         from fastapi import HTTPException
         raise HTTPException(404, "Asset not found")
+    companies_result = await db.execute(select(Company).order_by(Company.name))
+    companies = list(companies_result.scalars().all())
     return templates.TemplateResponse(
         "asset_form.html",
         {
             "request": request,
             "user": current_user,
             "asset": asset,
+            "companies": companies,
             "status_choices": AssetStatus,
             "status_labels": STATUS_LABELS,
+            "equipment_kind_choices": EQUIPMENT_KIND_CHOICES,
+            "equipment_kind_has_screen": EQUIPMENT_KIND_HAS_SCREEN,
+            "equipment_kind_needs_rack": EQUIPMENT_KIND_NEEDS_RACK,
+            "equipment_kind_has_tech": EQUIPMENT_KIND_HAS_TECH,
+            "extra_component_types": EXTRA_COMPONENT_TYPES,
+            "extra_components_list": _parse_extra_components(asset),
         },
     )
 
@@ -204,34 +323,43 @@ async def asset_edit_form(
 async def asset_edit(
     asset_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_user),
+    current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
     name: str = Form(...),
     serial_number: str | None = Form(None),
     asset_type: str | None = Form(None),
+    equipment_kind: str | None = Form(None),
+    model: str | None = Form(None),
     location: str | None = Form(None),
     status: AssetStatus = Form(...),
     description: str | None = Form(None),
     last_seen_at: str | None = Form(None),
+    cpu: str | None = Form(None),
+    ram: str | None = Form(None),
+    disk1_type: str | None = Form(None),
+    disk1_capacity: str | None = Form(None),
+    network_card: str | None = Form(None),
+    motherboard: str | None = Form(None),
+    screen_diagonal: str | None = Form(None),
+    screen_resolution: str | None = Form(None),
+    power_supply: str | None = Form(None),
+    monitor_diagonal: str | None = Form(None),
+    rack_units: str | None = Form(None),
+    extra_components: str | None = Form(None),
+    company_id: str | None = Form(None),
 ):
-    from datetime import datetime
     result = await db.execute(select(Asset).where(Asset.id == asset_id))
     asset = result.scalar_one_or_none()
     if not asset:
         from fastapi import HTTPException
         raise HTTPException(404, "Asset not found")
-    asset.name = name
-    asset.serial_number = serial_number if serial_number else None
-    asset.asset_type = asset_type if asset_type else None
-    asset.location = location if location else None
-    asset.status = status
-    asset.description = description if description else None
-    if last_seen_at:
-        try:
-            asset.last_seen_at = datetime.fromisoformat(last_seen_at)
-        except ValueError:
-            asset.last_seen_at = None
-    else:
-        asset.last_seen_at = None
+    data = _parse_asset_form(
+        name, serial_number, asset_type, equipment_kind, model, location, status, description, last_seen_at,
+        cpu, ram, disk1_type, disk1_capacity, network_card, motherboard,
+        screen_diagonal, screen_resolution, power_supply, monitor_diagonal,
+        rack_units=rack_units, extra_components_json=extra_components, company_id=company_id,
+    )
+    for key, value in data.items():
+        setattr(asset, key, value)
     await db.flush()
     # Create update event
     event = AssetEvent(
@@ -249,7 +377,7 @@ async def asset_edit(
 async def asset_add_event(
     asset_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_user),
+    current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
     event_type: AssetEventType = Form(...),
     description: str | None = Form(None),
 ):

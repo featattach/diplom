@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 from sqlalchemy import String, DateTime, ForeignKey, Text, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -13,12 +15,17 @@ class InventoryCampaign(Base):
     description: Mapped[str] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     finished_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     items: Mapped[list["InventoryItem"]] = relationship(
         "InventoryItem",
         back_populates="campaign",
         cascade="all, delete-orphan",
     )
+    company: Mapped["Company"] = relationship("Company", back_populates="campaigns")
 
 
 class InventoryItem(Base):

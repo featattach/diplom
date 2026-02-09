@@ -3,7 +3,9 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="card-title">Оборудование</h1>
+    {% if user.role.value in ['admin', 'user'] %}
     <a href="{{ request.url_for('asset_create') }}" class="btn btn-primary">+ Добавить</a>
+    {% endif %}
 </div>
 <p class="card-subtitle">Общий список. Введите параметры для поиска по названию, типу или расположению.</p>
 <form method="get" class="row g-3 mb-4">
@@ -19,7 +21,15 @@
         </select>
     </div>
     <div class="col-auto">
-        <input type="text" name="asset_type" class="form-control" placeholder="Тип" value="{{ filters.asset_type or '' }}">
+        <select name="equipment_kind" class="form-select">
+            <option value="">Все типы техники</option>
+            {% for k in equipment_kind_choices %}
+            <option value="{{ k.value }}" {% if filters.equipment_kind == k.value %}selected{% endif %}>{{ k.label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-auto">
+        <input type="text" name="asset_type" class="form-control" placeholder="Категория" value="{{ filters.asset_type or '' }}">
     </div>
     <div class="col-auto">
         <input type="text" name="location" class="form-control" placeholder="Расположение" value="{{ filters.location or '' }}">
@@ -37,8 +47,9 @@
             <tr>
                 <th>ID</th>
                 <th>Название</th>
+                <th>Модель</th>
+                <th>Тип техники</th>
                 <th>Серийный номер</th>
-                <th>Тип</th>
                 <th>Расположение</th>
                 <th>Статус</th>
                 <th>Последняя активность</th>
@@ -50,15 +61,16 @@
             <tr class="{% if is_inactive_fn(asset) %}table-warning{% endif %}">
                 <td>{{ asset.id }}</td>
                 <td><a href="{{ request.url_for('asset_detail', asset_id=asset.id) }}">{{ asset.name }}</a></td>
+                <td>{{ asset.model or '—' }}</td>
+                <td>{{ equipment_kind_labels.get(asset.equipment_kind, asset.equipment_kind or '—') }}</td>
                 <td>{{ asset.serial_number or '—' }}</td>
-                <td>{{ asset.asset_type or '—' }}</td>
                 <td>{{ asset.location or '—' }}</td>
                 <td><span class="badge bg-secondary">{{ status_labels.get(asset.status.value, asset.status.value) }}</span></td>
                 <td>{{ asset.last_seen_at.strftime('%Y-%m-%d %H:%M') if asset.last_seen_at else '—' }}</td>
                 <td><a href="{{ request.url_for('asset_detail', asset_id=asset.id) }}" class="btn btn-sm btn-outline-primary">Открыть</a></td>
             </tr>
             {% else %}
-            <tr><td colspan="8" class="text-muted">Нет записей</td></tr>
+            <tr><td colspan="9" class="text-muted">Нет записей</td></tr>
             {% endfor %}
         </tbody>
     </table>

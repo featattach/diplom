@@ -3,17 +3,57 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="card-title">Раздел: Инвентаризация</h1>
+    {% if user.role.value in ['admin', 'user'] %}
     <a href="{{ request.url_for('inventory_create') }}" class="btn btn-primary">+ Создать кампанию</a>
+    {% endif %}
 </div>
-<p class="card-subtitle">Список инвентаризационных кампаний.</p>
-<div class="list-group">
-    {% for c in campaigns %}
+
+<h5 class="h6 mt-3 mb-2">Организации</h5>
+<p class="text-muted small">Сводка по организации: техника и привязанная кампания инвентаризации. В карточке организации — детальная сводка по технике.</p>
+<div class="table-responsive mb-4">
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>Организация</th>
+                <th>Техника</th>
+                <th>Кампания</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for company in companies %}
+            <tr>
+                <td><a href="{{ request.url_for('company_detail', company_id=company.id) }}">{{ company.name }}</a></td>
+                <td>{{ company_asset_counts.get(company.id, 0) }} ед.</td>
+                <td>
+                    {% set latest_campaign = company_latest_campaign.get(company.id) %}
+                    {% if latest_campaign %}
+                    <a href="{{ request.url_for('inventory_detail', campaign_id=latest_campaign.id) }}">{{ latest_campaign.started_at.strftime('%Y-%m-%d') if latest_campaign.started_at else '—' }}</a>
+                    {% else %}
+                    —
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3" class="text-muted">Нет организаций. {% if user.role.value in ['admin', 'user'] %}<a href="{{ request.url_for('companies_list') }}">Справочник организаций</a> — добавить организацию; в карточке оборудования привяжите технику к организации.{% else %}Организации добавляются администратором.{% endif %}</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if campaigns_without_company %}
+<h5 class="h6 mt-4 mb-2">Кампании без привязки к организации</h5>
+<p class="text-muted small">Кампании, для которых не выбрана организация при создании.</p>
+<div class="list-group mb-4">
+    {% for c in campaigns_without_company %}
     <a href="{{ request.url_for('inventory_detail', campaign_id=c.id) }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
         <span>{{ c.name }}</span>
         <span class="text-muted">{{ c.started_at.strftime('%Y-%m-%d') if c.started_at else '' }}</span>
     </a>
-    {% else %}
-    <p class="text-muted">Нет кампаний</p>
     {% endfor %}
 </div>
+{% endif %}
+
+{% if user.role.value in ['admin', 'user'] and companies %}
+<p class="small"><a href="{{ request.url_for('companies_list') }}">Справочник организаций</a> — добавление и редактирование названия, краткой информации.</p>
+{% endif %}
 {% endblock %}

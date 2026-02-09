@@ -4,7 +4,9 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="card-title">Карточка оборудования</h1>
     <div>
+        {% if user.role.value in ['admin', 'user'] %}
         <a href="{{ request.url_for('asset_edit', asset_id=asset.id) }}" class="btn btn-primary">Внести изменения</a>
+        {% endif %}
         <a href="{{ request.url_for('assets_list') }}" class="btn btn-outline-secondary">К списку</a>
     </div>
 </div>
@@ -14,13 +16,41 @@
 <dl class="row mb-4">
     <dt class="col-sm-3">Инв. номер / ID</dt><dd class="col-sm-9">{{ asset.id }}</dd>
     <dt class="col-sm-3">Название</dt><dd class="col-sm-9">{{ asset.name }}</dd>
+    <dt class="col-sm-3">Тип техники</dt><dd class="col-sm-9">{{ equipment_kind_labels.get(asset.equipment_kind, asset.equipment_kind or '—') }}</dd>
+    <dt class="col-sm-3">Модель</dt><dd class="col-sm-9">{{ asset.model or '—' }}</dd>
     <dt class="col-sm-3">Серийный номер</dt><dd class="col-sm-9">{{ asset.serial_number or '—' }}</dd>
-    <dt class="col-sm-3">Тип / Модель</dt><dd class="col-sm-9">{{ asset.asset_type or '—' }}</dd>
+    <dt class="col-sm-3">Категория</dt><dd class="col-sm-9">{{ asset.asset_type or '—' }}</dd>
     <dt class="col-sm-3">Расположение</dt><dd class="col-sm-9">{{ asset.location or '—' }}</dd>
+    <dt class="col-sm-3">Организация</dt><dd class="col-sm-9">{% if asset.company %}<a href="{{ request.url_for('company_detail', company_id=asset.company.id) }}">{{ asset.company.name }}</a>{% else %}—{% endif %}</dd>
     <dt class="col-sm-3">Статус</dt><dd class="col-sm-9"><span class="badge bg-secondary">{{ asset.status.value }}</span></dd>
     <dt class="col-sm-3">Последняя активность</dt><dd class="col-sm-9">{{ asset.last_seen_at.strftime('%Y-%m-%d %H:%M') if asset.last_seen_at else '—' }}</dd>
+    {% if asset.equipment_kind == 'server' and asset.rack_units is not none %}
+    <dt class="col-sm-3">Юниты (U)</dt><dd class="col-sm-9">{{ asset.rack_units }}</dd>
+    {% endif %}
+    {% if asset.cpu or asset.ram or asset.disk1_type or asset.disk1_capacity or asset.network_card or asset.motherboard or asset.power_supply or asset.monitor_diagonal or asset.screen_diagonal or asset.screen_resolution %}
+    <dt class="col-sm-3">Процессор</dt><dd class="col-sm-9">{{ asset.cpu or '—' }}</dd>
+    <dt class="col-sm-3">ОЗУ</dt><dd class="col-sm-9">{{ asset.ram or '—' }}</dd>
+    <dt class="col-sm-3">Диск (тип / объём)</dt><dd class="col-sm-9">{{ (asset.disk1_type or '') + (' ' + asset.disk1_capacity if asset.disk1_capacity else '') or '—' }}</dd>
+    <dt class="col-sm-3">Сетевая карта</dt><dd class="col-sm-9">{{ asset.network_card or '—' }}</dd>
+    <dt class="col-sm-3">Материнская плата</dt><dd class="col-sm-9">{{ asset.motherboard or '—' }}</dd>
+    <dt class="col-sm-3">Блок питания</dt><dd class="col-sm-9">{{ asset.power_supply or '—' }}</dd>
+    <dt class="col-sm-3">Монитор (диагональ)</dt><dd class="col-sm-9">{{ asset.monitor_diagonal or '—' }}</dd>
+    <dt class="col-sm-3">Диагональ экрана</dt><dd class="col-sm-9">{{ asset.screen_diagonal or '—' }}</dd>
+    <dt class="col-sm-3">Разрешение экрана</dt><dd class="col-sm-9">{{ asset.screen_resolution or '—' }}</dd>
+    {% endif %}
+    {% if extra_components_list %}
+    <dt class="col-sm-3">Доп. устройства</dt>
+    <dd class="col-sm-9">
+        <ul class="list-unstyled mb-0">
+            {% for c in extra_components_list %}
+            <li><span class="badge bg-light text-dark">{{ component_type_labels.get(c.type, c.type) }}</span> {{ c.name or '—' }}</li>
+            {% endfor %}
+        </ul>
+    </dd>
+    {% endif %}
     <dt class="col-sm-3">Описание</dt><dd class="col-sm-9">{{ asset.description or '—' }}</dd>
 </dl>
+{% if user.role.value in ['admin', 'user'] %}
 <h3 class="h5 mt-4">Добавить событие</h3>
 <form method="post" action="{{ request.url_for('asset_add_event', asset_id=asset.id) }}" class="row g-2 mb-4">
     <div class="col-auto">
@@ -37,6 +67,7 @@
         <button type="submit" class="btn btn-primary">Добавить</button>
     </div>
 </form>
+{% endif %}
 <h3 class="h5 mt-4">История изменений</h3>
 <div class="table-responsive">
     <table class="table">

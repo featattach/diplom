@@ -13,7 +13,7 @@ def export_assets_xlsx(assets: list[Asset]) -> BytesIO:
     ws = wb.active
     ws.title = "Assets"
 
-    headers = ["ID", "Name", "Serial", "Type", "Location", "Status", "Last seen", "Created"]
+    headers = ["ID", "Name", "Model", "Equipment kind", "Serial", "Type", "Location", "Status", "Last seen", "Created"]
     for col, h in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col, value=h)
         cell.font = Font(bold=True)
@@ -22,12 +22,14 @@ def export_assets_xlsx(assets: list[Asset]) -> BytesIO:
     for row, asset in enumerate(assets, 2):
         ws.cell(row=row, column=1, value=asset.id)
         ws.cell(row=row, column=2, value=asset.name)
-        ws.cell(row=row, column=3, value=asset.serial_number or "")
-        ws.cell(row=row, column=4, value=asset.asset_type or "")
-        ws.cell(row=row, column=5, value=asset.location or "")
-        ws.cell(row=row, column=6, value=asset.status.value if asset.status else "")
-        ws.cell(row=row, column=7, value=asset.last_seen_at.isoformat() if asset.last_seen_at else "")
-        ws.cell(row=row, column=8, value=asset.created_at.isoformat() if asset.created_at else "")
+        ws.cell(row=row, column=3, value=getattr(asset, "model", None) or "")
+        ws.cell(row=row, column=4, value=getattr(asset, "equipment_kind", None) or "")
+        ws.cell(row=row, column=5, value=asset.serial_number or "")
+        ws.cell(row=row, column=6, value=asset.asset_type or "")
+        ws.cell(row=row, column=7, value=asset.location or "")
+        ws.cell(row=row, column=8, value=asset.status.value if asset.status else "")
+        ws.cell(row=row, column=9, value=asset.last_seen_at.isoformat() if asset.last_seen_at else "")
+        ws.cell(row=row, column=10, value=asset.created_at.isoformat() if asset.created_at else "")
 
     for col in range(1, len(headers) + 1):
         ws.column_dimensions[get_column_letter(col)].width = 16

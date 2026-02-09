@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Редактирование: {{ target_user.username }} — Система учёта оборудования{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="card-title">Редактирование учётной записи: {{ target_user.username }}</h1>
+    <a href="{{ request.url_for('admin_users') }}" class="btn btn-outline-secondary">К списку</a>
+</div>
+{% if is_self %}
+<div class="alert alert-info">Вы редактируете свою учётную запись. Изменить свою роль нельзя.</div>
+{% endif %}
+
+<div class="mb-4">
+    <label class="form-label">Фото</label>
+    <div class="d-flex align-items-center gap-3">
+        {% if target_user.avatar %}
+        <img src="{{ request.url_for('avatar_file', filename=target_user.avatar) }}" alt="" class="rounded-circle" style="width: 64px; height: 64px; object-fit: cover;">
+        {% else %}
+        <span class="rounded-circle d-inline-flex align-items-center justify-content-center bg-secondary text-white" style="width: 64px; height: 64px;">Нет фото</span>
+        {% endif %}
+        <form method="post" action="{{ request.url_for('admin_user_avatar_upload', user_id=target_user.id) }}" enctype="multipart/form-data" class="d-flex align-items-end gap-2">
+            <input type="file" name="file" accept=".jpg,.jpeg,.png,.gif,.webp" class="form-control form-control-sm" style="max-width: 220px;">
+            <button type="submit" class="btn btn-sm btn-outline-primary">Загрузить</button>
+        </form>
+    </div>
+    <small class="text-muted">До {{ max_size_mb }} МБ, форматы: {{ allowed_extensions }}</small>
+    {% if request.query_params.get('error') == 'no_file' %}<div class="text-danger small">Выберите файл.</div>{% endif %}
+    {% if request.query_params.get('error') == 'bad_type' %}<div class="text-danger small">Недопустимый формат файла.</div>{% endif %}
+    {% if request.query_params.get('error') == 'too_big' %}<div class="text-danger small">Файл слишком большой.</div>{% endif %}
+</div>
+
+<form method="post" action="{{ request.url_for('admin_user_edit_post', user_id=target_user.id) }}">
+    <div class="mb-3">
+        <label class="form-label">Роль</label>
+        {% if is_self %}
+        <input type="text" class="form-control" value="{{ role_labels.get(target_user.role.value, target_user.role.value) }}" readonly>
+        <input type="hidden" name="role" value="{{ target_user.role.value }}">
+        {% else %}
+        <select name="role" class="form-select">
+            {% for c in role_choices %}
+            <option value="{{ c.value }}" {% if target_user.role.value == c.value %}selected{% endif %}>{{ c.label }}</option>
+            {% endfor %}
+        </select>
+        {% endif %}
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Статус</label>
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="is_active" value="1" id="is_active" {% if target_user.is_active %}checked{% endif %}>
+            <label class="form-check-label" for="is_active">Учётная запись активна</label>
+        </div>
+        <small class="text-muted">Снимите галочку, чтобы заблокировать вход для этого пользователя.</small>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Новый пароль</label>
+        <input type="password" name="new_password" class="form-control" placeholder="Оставьте пустым, чтобы не менять">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Повторите новый пароль</label>
+        <input type="password" name="new_password_confirm" class="form-control" placeholder="Повтор пароля">
+    </div>
+    <button type="submit" class="btn btn-primary">Сохранить</button>
+    <a href="{{ request.url_for('admin_users') }}" class="btn btn-outline-secondary">Отмена</a>
+    {% if not is_self %}
+    <button type="button" class="btn btn-outline-danger ms-2" data-bs-toggle="modal" data-bs-target="#deleteModal">Удалить учётную запись</button>
+    {% endif %}
+</form>
+
+{% if not is_self %}
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Удалить учётную запись?</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                Пользователь <strong>{{ target_user.username }}</strong> будет удалён. Это действие нельзя отменить.
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <form method="post" action="{{ request.url_for('admin_user_delete', user_id=target_user.id) }}" class="d-inline">
+                    <button type="submit" class="btn btn-danger">Удалить</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

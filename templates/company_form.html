@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}{% if company %}Редактирование организации{% else %}Добавить организацию{% endif %} — Система учёта оборудования{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="card-title">{% if company %}Редактирование организации{% else %}Добавить организацию{% endif %}</h1>
+    <a href="{{ request.url_for('companies_list') }}" class="btn btn-outline-secondary">К списку</a>
+</div>
+<form method="post" action="{% if company %}{{ request.url_for('company_edit_post', company_id=company.id) }}{% else %}{{ request.url_for('company_create_post') }}{% endif %}">
+    <div class="mb-3">
+        <label class="form-label">Название *</label>
+        <input type="text" name="name" class="form-control" value="{{ company.name if company else '' }}" required>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Краткая информация</label>
+        <textarea name="short_info" class="form-control" rows="4" placeholder="Описание, контакты и т.д.">{{ company.short_info if company and company.short_info else '' }}</textarea>
+    </div>
+    <button type="submit" class="btn btn-primary">{% if company %}Сохранить{% else %}Создать{% endif %}</button>
+    <a href="{{ request.url_for('companies_list') }}" class="btn btn-outline-secondary">Отмена</a>
+</form>
+{% endblock %}

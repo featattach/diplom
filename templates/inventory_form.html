@@ -11,9 +11,31 @@
         <input type="text" name="name" class="form-control" value="{{ campaign.name if campaign else '' }}" required>
     </div>
     <div class="mb-3">
+        <label class="form-label">Организация</label>
+        <select name="company_id" class="form-select">
+            <option value="">— не выбрана —</option>
+            {% for c in companies %}
+            <option value="{{ c.id }}" {% if campaign and campaign.company_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+        </select>
+        <small class="text-muted">Привязка кампании к организации — тогда она отобразится в строке этой организации в разделе Инвентаризация.</small>
+    </div>
+    <div class="mb-3">
         <label class="form-label">Описание</label>
         <textarea name="description" class="form-control" rows="3">{{ campaign.description if campaign and campaign.description else '' }}</textarea>
     </div>
+    {% if campaign %}
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <label class="form-label">Дата начала</label>
+            <input type="datetime-local" name="started_at" class="form-control" value="{% if campaign.started_at %}{{ campaign.started_at.strftime('%Y-%m-%dT%H:%M') }}{% endif %}">
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">Дата окончания</label>
+            <input type="datetime-local" name="finished_at" class="form-control" value="{% if campaign.finished_at %}{{ campaign.finished_at.strftime('%Y-%m-%dT%H:%M') }}{% endif %}">
+        </div>
+    </div>
+    {% endif %}
     <button type="submit" class="btn btn-primary">{% if campaign %}Сохранить{% else %}Создать{% endif %}</button>
     <a href="{{ request.url_for('inventory_list') }}" class="btn btn-outline-secondary">Отмена</a>
 </form>

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}{{ company.name }} — Система учёта оборудования{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="card-title">{{ company.name }}</h1>
+    <div>
+        {% if user.role.value in ['admin', 'user'] %}
+        <a href="{{ request.url_for('company_edit', company_id=company.id) }}" class="btn btn-primary">Редактировать</a>
+        {% endif %}
+        <a href="{{ request.url_for('companies_list') }}" class="btn btn-outline-secondary">К списку</a>
+    </div>
+</div>
+{% if company.short_info %}
+<div class="mb-4">
+    <h5 class="h6 text-muted">Краткая информация</h5>
+    <p class="mb-0">{{ company.short_info }}</p>
+</div>
+{% endif %}
+<h5 class="h6 mt-4">Сводка по технике</h5>
+<p class="text-muted small">Единиц техники, привязанных к организации: {{ summary.total }}</p>
+{% if summary.total %}
+<div class="row mb-3">
+    <div class="col-md-6">
+        <table class="table table-sm">
+            <thead><tr><th>Статус</th><th>Кол-во</th></tr></thead>
+            <tbody>
+                {% for status, cnt in summary.status_counts.items() %}
+                <tr>
+                    <td>{{ status_labels.get(status, status) }}</td>
+                    <td>{{ cnt }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="col-md-6">
+        <table class="table table-sm">
+            <thead><tr><th>Расположение</th><th>Кол-во</th></tr></thead>
+            <tbody>
+                {% for location, cnt in summary.location_counts %}
+                <tr>
+                    <td>{{ location or '—' }}</td>
+                    <td>{{ cnt }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="2" class="text-muted">Нет данных по расположению</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<p class="text-muted">К этой организации пока не привязано ни одной единицы техники. Привязка задаётся в карточке оборудования.</p>
+{% endif %}
+{% endblock %}

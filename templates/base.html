@@ -14,19 +14,16 @@
             {% if user %}
             <div class="user-block d-flex align-items-center gap-2">
                 {% if user.avatar %}
-                <a href="{{ request.url_for('profile_avatar') }}" title="Изменить фото">
-                    <img src="{{ request.url_for('avatar_file', filename=user.avatar) }}" alt="" class="rounded-circle" style="width: 36px; height: 36px; object-fit: cover;">
-                </a>
+                <img src="{{ request.url_for('avatar_file', filename=user.avatar) }}" alt="" class="rounded-circle" style="width: 36px; height: 36px; object-fit: cover;">
                 {% else %}
-                <a href="{{ request.url_for('profile_avatar') }}" class="avatar-placeholder rounded-circle d-inline-flex align-items-center justify-content-center text-white text-decoration-none" style="width: 36px; height: 36px; background: rgba(255,255,255,.3); font-size: 14px;" title="Загрузить фото">?</a>
+                <span class="avatar-placeholder rounded-circle d-inline-flex align-items-center justify-content-center text-white" style="width: 36px; height: 36px; background: rgba(255,255,255,.3); font-size: 14px;">?</span>
                 {% endif %}
                 <div>
                     <div>Пользователь: {{ user.username }}</div>
                     {% if user.role.value == 'admin' %}
-                    <a class="admin-link" href="{{ request.url_for('reports') }}">Администрирование</a>
+                    <a class="admin-link" href="{{ request.url_for('admin_users') }}">Администрирование</a>
                     {% endif %}
                     <a class="logout-btn" href="{{ request.url_for('logout') }}">Выйти</a>
-                    <a class="logout-btn" href="{{ request.url_for('profile_avatar') }}">Фото</a>
                 </div>
             </div>
             {% endif %}
@@ -39,7 +36,7 @@
                 <a class="nav-link-custom {% if request.url.path == '/dashboard' or request.url.path == '/' %}active{% endif %}" href="{{ request.url_for('dashboard') }}">Главная</a>
                 <a class="nav-link-custom {% if request.url.path.startswith('/assets') %}active{% endif %}" href="{{ request.url_for('assets_list') }}">Оборудование</a>
                 <a class="nav-link-custom {% if request.url.path == '/movements' %}active{% endif %}" href="{{ request.url_for('movements') }}">Перемещения</a>
-                <a class="nav-link-custom {% if request.url.path.startswith('/inventory') %}active{% endif %}" href="{{ request.url_for('inventory_list') }}">Инвентаризация</a>
+                <a class="nav-link-custom {% if request.url.path.startswith('/inventory') or request.url.path.startswith('/companies') %}active{% endif %}" href="{{ request.url_for('inventory_list') }}">Инвентаризация</a>
                 <a class="nav-link-custom {% if request.url.path == '/reports' %}active{% endif %}" href="{{ request.url_for('reports') }}">Отчёты</a>
             </div>
         </div>

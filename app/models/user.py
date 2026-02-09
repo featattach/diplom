@@ -22,5 +22,6 @@ class User(Base):
         default=UserRole.user,
         nullable=False
     )
+    is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
     avatar: Mapped[str] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)

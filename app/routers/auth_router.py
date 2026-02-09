@@ -10,7 +10,8 @@ from werkzeug.security import check_password_hash
 from app.config import AVATAR_DIR, ALLOWED_AVATAR_EXTENSIONS, MAX_AVATAR_SIZE_MB
 from app.database import get_db
 from app.models import User
-from app.auth import get_current_user, require_user, login_user, logout_user
+from app.auth import get_current_user, require_user, require_role, login_user, logout_user
+from app.models.user import UserRole
 from app.templates_ctx import templates
 
 router = APIRouter(prefix="", tags=["auth"])
@@ -44,6 +45,12 @@ async def login(
             {"request": request, "user": None, "error": "Неверный логин или пароль"},
             status_code=401,
         )
+    if not getattr(user, "is_active", True):
+        return templates.TemplateResponse(
+            "login.html",
+            {"request": request, "user": None, "error": "Учётная запись заблокирована"},
+            status_code=403,
+        )
     res = RedirectResponse("/dashboard", status_code=302)
     await login_user(res, user.id)
     return res
@@ -75,7 +82,7 @@ async def profile_avatar_form(
 @router.post("/profile/avatar", name="profile_avatar_upload")
 async def profile_avatar_upload(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_user),
+    current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
     file: UploadFile = File(...),
 ):
     if not file.filename:

@@ -4,6 +4,9 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="card-title">{{ campaign.name }}</h1>
     <div>
+        {% if user.role.value in ['admin', 'user'] %}
+        <a href="{{ request.url_for('inventory_campaign_edit', campaign_id=campaign.id) }}" class="btn btn-primary">Редактировать кампанию</a>
+        {% endif %}
         <a href="{{ request.url_for('inventory_export', campaign_id=campaign.id) }}" class="btn btn-success">Скачать отчёт в Excel</a>
         <a href="{{ request.url_for('inventory_list') }}" class="btn btn-outline-secondary">Назад</a>
     </div>
@@ -11,6 +14,7 @@
 <p class="text-muted">{{ campaign.description or '' }}</p>
 <p><strong>Начало:</strong> {{ campaign.started_at.strftime('%Y-%m-%d %H:%M') if campaign.started_at else '—' }}
    <strong>Окончание:</strong> {{ campaign.finished_at.strftime('%Y-%m-%d %H:%M') if campaign.finished_at else '—' }}</p>
+{% if user.role.value in ['admin', 'user'] %}
 <h3 class="h5 mt-4">Добавить позицию</h3>
 <form method="post" action="{{ request.url_for('inventory_add_item', campaign_id=campaign.id) }}" class="row g-2 mb-4">
     <div class="col-auto">
@@ -31,6 +35,7 @@
         <button type="submit" class="btn btn-primary">Добавить</button>
     </div>
 </form>
+{% endif %}
 <h3 class="h5 mt-4">Позиции</h3>
 <div class="table-responsive">
     <table class="table">
@@ -54,7 +59,7 @@
                 <td>{% if item.found %}<span class="badge bg-success">Да</span>{% else %}<span class="badge bg-secondary">Нет</span>{% endif %}</td>
                 <td>{{ item.found_at.strftime('%Y-%m-%d %H:%M') if item.found_at else '—' }}</td>
                 <td>{{ item.notes or '—' }}</td>
-                <td>{% if not item.found %}<form method="post" action="{{ request.url_for('inventory_mark_found', campaign_id=campaign.id, item_id=item.id) }}" style="display:inline;"><button type="submit" class="btn btn-sm btn-success">Отметить найденным</button></form>{% endif %}</td>
+                <td>{% if not item.found and user.role.value in ['admin', 'user'] %}<form method="post" action="{{ request.url_for('inventory_mark_found', campaign_id=campaign.id, item_id=item.id) }}" style="display:inline;"><button type="submit" class="btn btn-sm btn-success">Отметить найденным</button></form>{% elif not item.found %}—{% endif %}</td>
             </tr>
             {% else %}
             <tr><td colspan="7" class="text-muted">Нет позиций</td></tr>

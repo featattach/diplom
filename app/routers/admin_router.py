@@ -1,0 +1,226 @@
+from datetime import datetime
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, Request, Form, File, UploadFile
+from fastapi.responses import RedirectResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from werkzeug.security import generate_password_hash
+
+from app.config import AVATAR_DIR, ALLOWED_AVATAR_EXTENSIONS, MAX_AVATAR_SIZE_MB
+from app.database import get_db
+from app.models import User
+from app.models.user import UserRole
+from app.auth import require_role
+from app.templates_ctx import templates
+
+router = APIRouter(prefix="", tags=["admin"])
+
+ROLE_LABELS = {
+    "admin": "Администратор",
+    "user": "Пользователь",
+    "viewer": "Наблюдатель",
+}
+
+
+@router.get("/admin/users", name="admin_users")
+async def admin_users_list(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    result = await db.execute(select(User).order_by(User.username))
+    users = list(result.scalars().all())
+    return templates.TemplateResponse(
+        "admin_users.html",
+        {
+            "request": request,
+            "user": current_user,
+            "users": users,
+            "role_labels": ROLE_LABELS,
+        },
+    )
+
+
+@router.get("/admin/users/create", name="admin_user_create")
+async def admin_user_create_form(
+    request: Request,
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    return templates.TemplateResponse(
+        "admin_user_create.html",
+        {
+            "request": request,
+            "user": current_user,
+            "role_labels": ROLE_LABELS,
+            "role_choices": [{"value": k, "label": v} for k, v in ROLE_LABELS.items()],
+        },
+    )
+
+
+@router.post("/admin/users/create", name="admin_user_create_post")
+async def admin_user_create(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+    username: str = Form(...),
+    password: str = Form(...),
+    password_confirm: str = Form(...),
+    role: str = Form("user"),
+    is_active: str | None = Form("1"),
+):
+    role_choices = [{"value": k, "label": v} for k, v in ROLE_LABELS.items()]
+    if not username or not username.strip():
+        return templates.TemplateResponse(
+            "admin_user_create.html",
+            {
+                "request": request,
+                "user": current_user,
+                "role_labels": ROLE_LABELS,
+                "role_choices": role_choices,
+                "error": "Введите логин",
+            },
+            status_code=400,
+        )
+    username = username.strip()
+    if password != password_confirm or not password:
+        return templates.TemplateResponse(
+            "admin_user_create.html",
+            {
+                "request": request,
+                "user": current_user,
+                "role_labels": ROLE_LABELS,
+                "role_choices": role_choices,
+                "error": "Пароли не совпадают или пусты",
+                "username": username,
+            },
+            status_code=400,
+        )
+    existing = await db.execute(select(User).where(User.username == username))
+    if existing.scalar_one_or_none():
+        return templates.TemplateResponse(
+            "admin_user_create.html",
+            {
+                "request": request,
+                "user": current_user,
+                "role_labels": ROLE_LABELS,
+                "role_choices": role_choices,
+                "error": "Пользователь с таким логином уже существует",
+                "username": username,
+            },
+            status_code=400,
+        )
+    role_val = UserRole(role) if role in ROLE_LABELS else UserRole.user
+    new_user = User(
+        username=username,
+        password_hash=generate_password_hash(password),
+        role=role_val,
+        is_active=is_active == "1",
+    )
+    db.add(new_user)
+    await db.flush()
+    return RedirectResponse(url="/admin/users", status_code=302)
+
+
+@router.post("/admin/users/{user_id:int}/delete", name="admin_user_delete")
+async def admin_user_delete(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    from fastapi import HTTPException
+    if user_id == current_user.id:
+        raise HTTPException(403, "Нельзя удалить свою учётную запись")
+    result = await db.execute(select(User).where(User.id == user_id))
+    target = result.scalar_one_or_none()
+    if not target:
+        raise HTTPException(404, "User not found")
+    await db.delete(target)
+    await db.flush()
+    return RedirectResponse(url="/admin/users", status_code=302)
+
+
+@router.get("/admin/users/{user_id:int}/edit", name="admin_user_edit")
+async def admin_user_edit_form(
+    request: Request,
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    result = await db.execute(select(User).where(User.id == user_id))
+    target = result.scalar_one_or_none()
+    if not target:
+        from fastapi import HTTPException
+        raise HTTPException(404, "User not found")
+    is_self = target.id == current_user.id
+    return templates.TemplateResponse(
+        "admin_user_edit.html",
+        {
+            "request": request,
+            "user": current_user,
+            "target_user": target,
+            "role_labels": ROLE_LABELS,
+            "role_choices": [{"value": k, "label": v} for k, v in ROLE_LABELS.items()],
+            "is_self": is_self,
+            "max_size_mb": MAX_AVATAR_SIZE_MB,
+            "allowed_extensions": ", ".join(ALLOWED_AVATAR_EXTENSIONS),
+        },
+    )
+
+
+@router.post("/admin/users/{user_id:int}/avatar", name="admin_user_avatar_upload")
+async def admin_user_avatar_upload(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+    file: UploadFile = File(...),
+):
+    from fastapi import HTTPException
+    result = await db.execute(select(User).where(User.id == user_id))
+    target = result.scalar_one_or_none()
+    if not target:
+        raise HTTPException(404, "User not found")
+    if not file.filename:
+        return RedirectResponse(url=f"/admin/users/{user_id}/edit?error=no_file", status_code=302)
+    ext = Path(file.filename).suffix.lstrip(".").lower()
+    if ext not in ALLOWED_AVATAR_EXTENSIONS:
+        return RedirectResponse(url=f"/admin/users/{user_id}/edit?error=bad_type", status_code=302)
+    content = await file.read()
+    if len(content) > MAX_AVATAR_SIZE_MB * 1024 * 1024:
+        return RedirectResponse(url=f"/admin/users/{user_id}/edit?error=too_big", status_code=302)
+    AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+    filename = f"{target.id}_{int(datetime.utcnow().timestamp())}.{ext}"
+    path = AVATAR_DIR / filename
+    with open(path, "wb") as f:
+        f.write(content)
+    target.avatar = filename
+    await db.flush()
+    return RedirectResponse(url=f"/admin/users/{user_id}/edit", status_code=302)
+
+
+@router.post("/admin/users/{user_id:int}/edit", name="admin_user_edit_post")
+async def admin_user_edit(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+    role: str | None = Form(None),
+    is_active: str | None = Form(None),
+    new_password: str | None = Form(None),
+    new_password_confirm: str | None = Form(None),
+):
+    result = await db.execute(select(User).where(User.id == user_id))
+    target = result.scalar_one_or_none()
+    if not target:
+        from fastapi import HTTPException
+        raise HTTPException(404, "User not found")
+    is_self = target.id == current_user.id
+
+    if role and role in ROLE_LABELS and not is_self:
+        target.role = UserRole(role)
+    target.is_active = is_active == "1"
+
+    if new_password and new_password.strip() and new_password == new_password_confirm:
+        target.password_hash = generate_password_hash(new_password.strip())
+
+    await db.flush()
+    return RedirectResponse(url="/admin/users", status_code=302)
