@@ -13,6 +13,23 @@
 {% if is_inactive %}
 <div class="alert alert-warning-custom alert">Устройство неактивно (нет недавней активности).</div>
 {% endif %}
+{% if inventory_campaign %}
+<div class="alert alert-info d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+    <span>Кампания инвентаризации: <strong>{{ inventory_campaign.name }}</strong></span>
+    <a href="{{ request.url_for('inventory_detail', campaign_id=inventory_campaign.id) }}" class="btn btn-sm btn-outline-primary">К кампании</a>
+</div>
+{% if request.query_params.get('marked') %}
+<div class="alert alert-success mb-3">Оборудование отмечено как отсканировано (найдено) в этой кампании.</div>
+{% endif %}
+{% if inventory_item and inventory_item.found %}
+<p class="text-success mb-3"><span class="badge bg-success">Отсканировано</span> {{ inventory_item.found_at.strftime('%Y-%m-%d %H:%M') if inventory_item.found_at else '' }}</p>
+{% else %}
+<form method="post" action="{{ request.url_for('asset_mark_inventory_found', asset_id=asset.id) }}" class="mb-3">
+    <input type="hidden" name="campaign_id" value="{{ inventory_campaign.id }}">
+    <button type="submit" class="btn btn-success">Отметить как отсканировано</button>
+</form>
+{% endif %}
+{% endif %}
 <dl class="row mb-4">
     <dt class="col-sm-3">Инв. номер / ID</dt><dd class="col-sm-9">{{ asset.id }}</dd>
     <dt class="col-sm-3">Название</dt><dd class="col-sm-9">{{ asset.name }}</dd>
@@ -50,6 +67,28 @@
     {% endif %}
     <dt class="col-sm-3">Описание</dt><dd class="col-sm-9">{{ asset.description or '—' }}</dd>
 </dl>
+<div class="qr-block border rounded p-3 mb-4 bg-light">
+    <h3 class="h6 mb-3">QR-код для инвентаризации</h3>
+    {% if qr_exists %}
+    <div id="qr-print-area" class="d-flex flex-wrap align-items-center gap-3">
+        <img src="{{ request.url_for('asset_qr_image', asset_id=asset.id) }}" alt="QR-код" class="qr-preview" width="160" height="160">
+        <div>
+            <p class="text-muted small mb-2">Сканирование откроет эту карточку на устройстве.</p>
+            <form method="post" action="{{ request.url_for('asset_generate_qr', asset_id=asset.id) }}" class="d-inline me-1">
+                <button type="submit" class="btn btn-outline-secondary btn-sm">Перегенерировать QR</button>
+            </form>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="btn-print-qr"
+                data-asset-name="{{ asset.name }}{% if asset.serial_number %} ({{ asset.serial_number }}){% endif %}"
+                data-qr-src="{{ request.url_for('asset_qr_image', asset_id=asset.id) }}">Распечатать QR-код</button>
+        </div>
+    </div>
+    {% else %}
+    <p class="text-muted small mb-2">Сгенерируйте QR-код — его можно распечатать и наклеить на технику. При сканировании откроется эта карточка.</p>
+    <form method="post" action="{{ request.url_for('asset_generate_qr', asset_id=asset.id) }}">
+        <button type="submit" class="btn btn-primary">Сгенерировать QR-код</button>
+    </form>
+    {% endif %}
+</div>
 {% if user.role.value in ['admin', 'user'] %}
 <h3 class="h5 mt-4">Добавить событие</h3>
 <form method="post" action="{{ request.url_for('asset_add_event', asset_id=asset.id) }}" class="row g-2 mb-4">
@@ -91,4 +130,30 @@
         </tbody>
     </table>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function() {
+    var btn = document.getElementById('btn-print-qr');
+    if (!btn) return;
+    btn.addEventListener('click', function() {
+        var name = btn.getAttribute('data-asset-name') || '';
+        var path = btn.getAttribute('data-qr-src') || '';
+        var qrUrl = path.indexOf('http') === 0 ? path : (window.location.origin + path);
+        var w = window.open('', '_blank', 'width=400,height=500');
+        if (!w) {
+            alert('Разрешите всплывающие окна для печати QR-кода.');
+            return;
+        }
+        w.document.write(
+            '<!DOCTYPE html><html><head><meta charset="utf-8"><title>QR — ' + (name.replace(/</g, '&lt;')) + '</title>' +
+            '<style>body{margin:0;padding:2cm;font-family:sans-serif;text-align:center;}h1{font-size:1.1rem;margin-bottom:1rem;}img{display:block;margin:0 auto;}</style></head><body>' +
+            '<h1>' + (name.replace(/</g, '&lt;')) + '</h1>' +
+            '<img src="' + qrUrl.replace(/"/g, '&quot;') + '" alt="QR" width="200" height="200" onload="window.focus();window.print();window.onafterprint=function(){window.close();};">' +
+            '</body></html>'
+        );
+        w.document.close();
+    });
+})();
+</script>
 {% endblock %}

@@ -1,13 +1,13 @@
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, Request, Query, Form
-from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi import APIRouter, Depends, Request, Query, Form, HTTPException
+from fastapi.responses import RedirectResponse, StreamingResponse, FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.config import INACTIVE_DAYS_THRESHOLD
+from app.config import INACTIVE_DAYS_THRESHOLD, QR_DIR
 from app.database import get_db
-from app.models import Asset, AssetEvent, Company
+from app.models import Asset, AssetEvent, Company, InventoryCampaign, InventoryItem
 from app.models.asset import AssetStatus, AssetEventType, EquipmentKind
 from app.auth import require_user, require_role
 from app.models.user import User, UserRole
@@ -68,6 +68,19 @@ def is_asset_inactive(asset: Asset) -> bool:
         return True
     threshold = datetime.utcnow() - timedelta(days=INACTIVE_DAYS_THRESHOLD)
     return asset.last_seen_at.replace(tzinfo=None) < threshold
+
+
+def _generate_qr_for_asset(asset_id: int, base_url: str) -> None:
+    """Генерирует PNG QR-кода с ссылкой на карточку актива и сохраняет в data/qrcodes."""
+    import qrcode
+    QR_DIR.mkdir(parents=True, exist_ok=True)
+    url = f"{base_url.rstrip('/')}/assets/{asset_id}"
+    qr = qrcode.QRCode(version=1, box_size=8, border=2)
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    path = QR_DIR / f"{asset_id}.png"
+    img.save(path, "PNG")
 
 
 @router.get("/assets", name="assets_list")
@@ -145,19 +158,36 @@ async def asset_detail(
     asset_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_user),
+    inventory: int | None = Query(None, description="ID кампании инвентаризации для отметки «отсканировано»"),
 ):
     result = await db.execute(
         select(Asset)
         .where(Asset.id == asset_id)
-        .options(selectinload(Asset.events), selectinload(Asset.company))
+        .options(selectinload(Asset.events), selectinload(Asset.company), selectinload(Asset.inventory_items))
     )
     asset = result.scalar_one_or_none()
     if not asset:
-        from fastapi import HTTPException
         raise HTTPException(404, "Asset not found")
     events = sorted(asset.events, key=lambda e: e.created_at or datetime.min, reverse=True)
     extra_components_list = _parse_extra_components(asset)
     component_type_labels = {t["value"]: t["label"] for t in EXTRA_COMPONENT_TYPES}
+    qr_path = QR_DIR / f"{asset.id}.png"
+
+    inventory_campaign = None
+    inventory_item = None
+    if inventory:
+        camp_result = await db.execute(
+            select(InventoryCampaign).where(InventoryCampaign.id == inventory)
+        )
+        inventory_campaign = camp_result.scalar_one_or_none()
+        if inventory_campaign:
+            item_result = await db.execute(
+                select(InventoryItem)
+                .where(InventoryItem.campaign_id == inventory)
+                .where(InventoryItem.asset_id == asset_id)
+            )
+            inventory_item = item_result.scalar_one_or_none()
+
     return templates.TemplateResponse(
         "asset_detail.html",
         {
@@ -171,7 +201,87 @@ async def asset_detail(
             "equipment_kind_labels": EQUIPMENT_KIND_LABELS,
             "extra_components_list": extra_components_list,
             "component_type_labels": component_type_labels,
+            "qr_exists": qr_path.exists(),
+            "inventory_campaign": inventory_campaign,
+            "inventory_item": inventory_item,
         },
+    )
+
+
+@router.get("/assets/{asset_id:int}/qr-image", name="asset_qr_image")
+async def asset_qr_image(
+    asset_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_user),
+):
+    """Отдаёт PNG QR-кода для актива (если сгенерирован)."""
+    path = QR_DIR / f"{asset_id}.png"
+    if not path.is_file():
+        raise HTTPException(404, "QR-код не сгенерирован")
+    result = await db.execute(select(Asset).where(Asset.id == asset_id))
+    if not result.scalar_one_or_none():
+        raise HTTPException(404, "Asset not found")
+    return FileResponse(path, media_type="image/png")
+
+
+@router.post("/assets/{asset_id:int}/generate-qr", name="asset_generate_qr")
+async def asset_generate_qr(
+    request: Request,
+    asset_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_user),
+):
+    """Генерирует или перезаписывает QR-код для актива, редирект на карточку."""
+    result = await db.execute(select(Asset).where(Asset.id == asset_id))
+    asset = result.scalar_one_or_none()
+    if not asset:
+        raise HTTPException(404, "Asset not found")
+    base_url = str(request.base_url).rstrip("/")
+    _generate_qr_for_asset(asset_id, base_url)
+    return RedirectResponse(
+        request.url_for("asset_detail", asset_id=asset_id),
+        status_code=303,
+    )
+
+
+@router.post("/assets/{asset_id:int}/mark-inventory-found", name="asset_mark_inventory_found")
+async def asset_mark_inventory_found(
+    request: Request,
+    asset_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_user),
+    campaign_id: int = Form(...),
+):
+    """Отмечает оборудование как отсканированное (найденное) в рамках кампании инвентаризации."""
+    result = await db.execute(select(Asset).where(Asset.id == asset_id))
+    if not result.scalar_one_or_none():
+        raise HTTPException(404, "Asset not found")
+    camp_result = await db.execute(
+        select(InventoryCampaign).where(InventoryCampaign.id == campaign_id)
+    )
+    if not camp_result.scalar_one_or_none():
+        raise HTTPException(404, "Campaign not found")
+    item_result = await db.execute(
+        select(InventoryItem)
+        .where(InventoryItem.campaign_id == campaign_id)
+        .where(InventoryItem.asset_id == asset_id)
+    )
+    item = item_result.scalar_one_or_none()
+    if not item:
+        item = InventoryItem(
+            campaign_id=campaign_id,
+            asset_id=asset_id,
+            found=True,
+            found_at=datetime.utcnow(),
+        )
+        db.add(item)
+    else:
+        item.found = True
+        item.found_at = datetime.utcnow()
+    await db.flush()
+    return RedirectResponse(
+        request.url_for("asset_detail", asset_id=asset_id) + f"?inventory={campaign_id}&marked=1",
+        status_code=303,
     )
 
 
@@ -398,7 +508,6 @@ async def asset_add_event(
     result = await db.execute(select(Asset).where(Asset.id == asset_id))
     asset = result.scalar_one_or_none()
     if not asset:
-        from fastapi import HTTPException
         raise HTTPException(404, "Asset not found")
     event = AssetEvent(
         asset_id=asset_id,
@@ -409,3 +518,22 @@ async def asset_add_event(
     db.add(event)
     await db.flush()
     return RedirectResponse(url=f"/assets/{asset_id}", status_code=302)
+
+
+@router.get("/scan", name="scan_qr")
+async def scan_qr_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_user),
+):
+    """Страница сканирования QR-кода камерой (для перехода на карточку и отметки «отсканировано»)."""
+    campaigns_result = await db.execute(
+        select(InventoryCampaign)
+        .where(InventoryCampaign.finished_at.is_(None))
+        .order_by(InventoryCampaign.started_at.desc())
+    )
+    campaigns = list(campaigns_result.scalars().all())
+    return templates.TemplateResponse(
+        "scan.html",
+        {"request": request, "user": current_user, "campaigns": campaigns},
+    )

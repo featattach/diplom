@@ -20,3 +20,6 @@ INACTIVE_DAYS_THRESHOLD = int(os.getenv("INACTIVE_DAYS_THRESHOLD", "30"))
 AVATAR_DIR = BASE_DIR / "data" / "avatars"
 ALLOWED_AVATAR_EXTENSIONS = {"jpg", "jpeg", "png", "gif", "webp"}
 MAX_AVATAR_SIZE_MB = 5
+
+# Папка для сгенерированных QR-кодов оборудования
+QR_DIR = BASE_DIR / "data" / "qrcodes"

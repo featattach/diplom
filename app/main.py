@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.database import engine, Base, get_db
@@ -22,8 +23,15 @@ if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    """Иконка вкладки: браузер по умолчанию запрашивает /favicon.ico."""
+    return RedirectResponse(url="/static/favicon.svg")
+
+
 @app.on_event("startup")
 async def startup():
-    from app.config import BASE_DIR, AVATAR_DIR
+    from app.config import BASE_DIR, AVATAR_DIR, QR_DIR
     (BASE_DIR / "data").mkdir(parents=True, exist_ok=True)
     AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+    QR_DIR.mkdir(parents=True, exist_ok=True)

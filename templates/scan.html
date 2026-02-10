@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Сканировать QR — Система учёта оборудования{% endblock %}
+{% block content %}
+<div class="scan-page">
+    <h1 class="card-title mb-3">Сканирование QR-кода</h1>
+    <p class="text-muted mb-4">Наведите камеру на QR-код оборудования — откроется карточка актива. Если выбрана кампания инвентаризации, оборудование можно отметить как «отсканировано».</p>
+    <p class="small text-muted mb-3">Камера работает по <strong>HTTPS</strong> или с <strong>localhost</strong>. По HTTP с телефона или другого устройства браузер блокирует доступ к камере.</p>
+    <div class="mb-4">
+        <label for="scan-campaign" class="form-label">Кампания инвентаризации (для отметки «отсканировано»)</label>
+        <select id="scan-campaign" class="form-select" style="max-width: 320px;">
+            <option value="">Не выбрана</option>
+            {% for c in campaigns %}
+            <option value="{{ c.id }}">{{ c.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div id="scan-area" class="text-center">
+        <button type="button" id="btn-scan" class="btn btn-primary btn-lg">Сканировать</button>
+        <div id="camera-wrap" class="mt-3" style="display: none;">
+            <video id="video" playsinline autoplay muted style="max-width: 100%; max-height: 50vh; background: #000; border-radius: 8px;"></video>
+            <canvas id="canvas" style="display: none;"></canvas>
+            <p class="small text-muted mt-2">Держите QR-код в рамке камеры</p>
+            <button type="button" id="btn-stop" class="btn btn-outline-secondary btn-sm mt-2">Остановить</button>
+        </div>
+    </div>
+    <div id="scan-error" class="alert alert-warning mt-3" style="display: none;" role="alert"></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<script>
+(function() {
+    var video = document.getElementById('video');
+    var canvas = document.getElementById('canvas');
+    var ctx = canvas.getContext('2d');
+    var btnScan = document.getElementById('btn-scan');
+    var btnStop = document.getElementById('btn-stop');
+    var cameraWrap = document.getElementById('camera-wrap');
+    var scanError = document.getElementById('scan-error');
+    var stream = null;
+
+    function hideError() { scanError.style.display = 'none'; }
+    function showError(msg) {
+        scanError.textContent = msg;
+        scanError.style.display = 'block';
+    }
+
+    var selectCampaign = document.getElementById('scan-campaign');
+    var STORAGE_KEY = 'scan_inventory_campaign_id';
+    if (selectCampaign) {
+        try {
+            var saved = sessionStorage.getItem(STORAGE_KEY);
+            if (saved) selectCampaign.value = saved;
+            selectCampaign.addEventListener('change', function() {
+                sessionStorage.setItem(STORAGE_KEY, selectCampaign.value || '');
+            });
+        } catch (e) {}
+    }
+
+    function redirectToUrl(data) {
+        var url = data.trim();
+        if (!url) return false;
+        var finalUrl = url;
+        var campaignId = selectCampaign ? selectCampaign.value : (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(STORAGE_KEY) : '');
+        if (campaignId) {
+            try {
+                if (url.startsWith('http://') || url.startsWith('https://')) {
+                    var origin = window.location.origin;
+                    if (url.indexOf(origin) === 0) {
+                        var path = url.slice(origin.length).split('?')[0];
+                        if (path.indexOf('/assets/') === 0) {
+                            var sep = url.indexOf('?') >= 0 ? '&' : '?';
+                            finalUrl = url + sep + 'inventory=' + encodeURIComponent(campaignId);
+                        }
+                    }
+                } else if (url.startsWith('/assets/')) {
+                    var sep = url.indexOf('?') >= 0 ? '&' : '?';
+                    finalUrl = url + sep + 'inventory=' + encodeURIComponent(campaignId);
+                }
+            } catch (e) {}
+        }
+        if (finalUrl.startsWith('http://') || finalUrl.startsWith('https://')) {
+            var origin = window.location.origin;
+            if (finalUrl.indexOf(origin) === 0) {
+                window.location.href = finalUrl;
+                return true;
+            }
+            return false;
+        }
+        if (finalUrl.startsWith('/')) {
+            window.location.href = finalUrl;
+            return true;
+        }
+        return false;
+    }
+
+    function tick() {
+        if (!video.srcObject || video.readyState !== video.HAVE_ENOUGH_DATA) {
+            requestAnimationFrame(tick);
+            return;
+        }
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+        var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        var code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
+        if (code && code.data) {
+            if (redirectToUrl(code.data)) {
+                return;
+            }
+        }
+        requestAnimationFrame(tick);
+    }
+
+    btnScan.addEventListener('click', function() {
+        hideError();
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+                .then(function(s) {
+                    stream = s;
+                    video.srcObject = s;
+                    cameraWrap.style.display = 'block';
+                    btnScan.style.display = 'none';
+                    video.play();
+                    tick();
+                })
+                .catch(function(err) {
+                    var msg = 'Не удалось получить доступ к камере. ';
+                    if (err.name === 'NotAllowedError') {
+                        msg += 'Разрешите доступ к камере в запросе браузера или в настройках сайта.';
+                    } else if (err.name === 'NotFoundError') {
+                        msg += 'Камера не найдена.';
+                    } else if (err.name === 'SecurityError' || !window.isSecureContext) {
+                        msg += 'Камера доступна только по HTTPS (или с localhost). Откройте сайт по адресу https://... — например через туннель (ngrok, cloudflared) или настройте HTTPS на сервере.';
+                    } else {
+                        msg += 'Убедитесь, что используете HTTPS при доступе с телефона или другого устройства.';
+                    }
+                    showError(msg);
+                });
+        } else {
+            showError('Камера не поддерживается в этом браузере.');
+        }
+    });
+
+    btnStop.addEventListener('click', function() {
+        if (stream) {
+            stream.getTracks().forEach(function(t) { t.stop(); });
+            stream = null;
+        }
+        video.srcObject = null;
+        cameraWrap.style.display = 'none';
+        btnScan.style.display = 'inline-block';
+    });
+})();
+</script>
+{% endblock %}
