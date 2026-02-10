@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, Request, Query, Form, HTTPException
 from fastapi.responses import RedirectResponse, StreamingResponse, FileResponse
 from sqlalchemy import select
@@ -132,6 +133,60 @@ async def assets_list(
     location: str | None = Query(None),
     company_id: str | None = Query(None),
 ):
+    q = _assets_list_query(name, status, inactive_by_activity, equipment_kind, location, company_id)
+    result = await db.execute(q)
+    assets = list(result.scalars().all())
+    if inactive_by_activity:
+        assets = [a for a in assets if is_asset_inactive(a)]
+    companies_result = await db.execute(select(Company).order_by(Company.name))
+    companies = list(companies_result.scalars().all())
+    locations_result = await db.execute(
+        select(Asset.location).where(Asset.location.isnot(None)).where(Asset.location != "").distinct().order_by(Asset.location)
+    )
+    location_choices = [r[0] for r in locations_result.all()]
+    qp = {
+        k: v
+        for k, v in [
+            ("name", name),
+            ("status", status),
+            ("inactive_by_activity", "1" if inactive_by_activity else None),
+            ("equipment_kind", equipment_kind),
+            ("location", location or ""),
+            ("company_id", company_id or ""),
+        ]
+        if v is not None and v != ""
+    }
+    base_export_url = request.url_for("assets_export")
+    export_url = str(base_export_url.include_query_params(**qp)) if qp else str(base_export_url)
+    return templates.TemplateResponse(
+        "assets_list.html",
+        {
+            "request": request,
+            "user": current_user,
+            "assets": assets,
+            "companies": companies,
+            "location_choices": location_choices,
+            "export_url": export_url,
+            "filters": {"name": name, "status": status, "inactive_by_activity": inactive_by_activity, "equipment_kind": equipment_kind, "location": location or "", "company_id": company_id or ""},
+            "status_choices": AssetStatus,
+            "status_labels": STATUS_LABELS,
+            "equipment_kind_choices": EQUIPMENT_KIND_CHOICES,
+            "equipment_kind_labels": EQUIPMENT_KIND_LABELS,
+            "is_inactive_fn": is_asset_inactive,
+            "inactive_days_threshold": INACTIVE_DAYS_THRESHOLD,
+        },
+    )
+
+
+def _assets_list_query(
+    name: str | None,
+    status: str | None,
+    inactive_by_activity: bool,
+    equipment_kind: str | None,
+    location: str | None,
+    company_id: str | None,
+):
+    """Общая логика фильтрации списка активов (для списка и экспорта)."""
     status_filter = None
     if status and status.strip() and status.strip() in ("active", "inactive", "maintenance", "retired"):
         status_filter = AssetStatus(status.strip())
@@ -139,7 +194,6 @@ async def assets_list(
     if name:
         q = q.where(Asset.name.ilike(f"%{name}%"))
     if inactive_by_activity:
-        # Не фильтруем по status — отфильтруем в Python по last_seen_at (как на дашборде)
         q = q.where(Asset.status != AssetStatus.retired)
     elif status_filter is not None:
         q = q.where(Asset.status == status_filter)
@@ -152,42 +206,25 @@ async def assets_list(
             q = q.where(Asset.company_id == int(company_id.strip()))
         except ValueError:
             pass
-    result = await db.execute(q)
-    assets = list(result.scalars().all())
-    if inactive_by_activity:
-        assets = [a for a in assets if is_asset_inactive(a)]
-    companies_result = await db.execute(select(Company).order_by(Company.name))
-    companies = list(companies_result.scalars().all())
-    locations_result = await db.execute(
-        select(Asset.location).where(Asset.location.isnot(None)).where(Asset.location != "").distinct().order_by(Asset.location)
-    )
-    location_choices = [r[0] for r in locations_result.all()]
-    return templates.TemplateResponse(
-        "assets_list.html",
-        {
-            "request": request,
-            "user": current_user,
-            "assets": assets,
-            "companies": companies,
-            "location_choices": location_choices,
-            "filters": {"name": name, "status": status, "inactive_by_activity": inactive_by_activity, "equipment_kind": equipment_kind, "location": location or "", "company_id": company_id or ""},
-            "status_choices": AssetStatus,
-            "status_labels": STATUS_LABELS,
-            "equipment_kind_choices": EQUIPMENT_KIND_CHOICES,
-            "equipment_kind_labels": EQUIPMENT_KIND_LABELS,
-            "is_inactive_fn": is_asset_inactive,
-            "inactive_days_threshold": INACTIVE_DAYS_THRESHOLD,
-        },
-    )
+    return q
 
 
 @router.get("/assets/export", name="assets_export")
 async def assets_export(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_user),
+    name: str | None = Query(None),
+    status: str | None = Query(None),
+    inactive_by_activity: bool = Query(False),
+    equipment_kind: str | None = Query(None),
+    location: str | None = Query(None),
+    company_id: str | None = Query(None),
 ):
-    result = await db.execute(select(Asset).options(selectinload(Asset.company)).order_by(Asset.id))
+    q = _assets_list_query(name, status, inactive_by_activity, equipment_kind, location, company_id)
+    result = await db.execute(q)
     assets = list(result.scalars().all())
+    if inactive_by_activity:
+        assets = [a for a in assets if is_asset_inactive(a)]
     buf = export_assets_xlsx(assets)
     return StreamingResponse(
         buf,
