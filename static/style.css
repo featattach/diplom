@@ -24,9 +24,10 @@ body {
 }
 .app-header .container {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
   flex-wrap: wrap;
+  position: relative;
 }
 .app-header .app-title {
   font-weight: 700;
@@ -35,6 +36,10 @@ body {
   color: #fff;
 }
 .app-header .user-block {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
   text-align: right;
   font-size: 0.95rem;
 }
@@ -147,4 +152,63 @@ body {
 .content-card .card.h-100 .card-body .btn {
   margin-top: auto;
   align-self: flex-start;
+}
+
+/* Страница входа — компактный блок по центру, градиент */
+.login-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 2rem 1rem;
+  background: linear-gradient(160deg, #e8e4f3 0%, #d4cee8 50%, #c4bcd9 100%);
+  border-radius: 8px;
+}
+.login-block {
+  width: 100%;
+  max-width: 320px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  text-align: left;
+}
+.login-block-header {
+  background: linear-gradient(135deg, #2d6a4f 0%, #1b4332 100%);
+  color: #fff;
+  padding: 1.25rem 1.25rem 1rem;
+  text-align: center;
+}
+.login-block-icon {
+  display: inline-block;
+  font-size: 1.75rem;
+  opacity: 0.9;
+  margin-bottom: 0.35rem;
+  line-height: 1;
+}
+.login-block-header-sub {
+  font-size: 1rem;
+  font-weight: 600;
+  opacity: 0.95;
+  margin-top: 0.25rem;
+}
+.login-block-body {
+  padding: 1.5rem 1.25rem;
+}
+.login-block-body .form-control {
+  border-radius: 6px;
+  border-color: #dee2e6;
+}
+.login-submit {
+  width: 100%;
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #2d6a4f 0%, #1b4332 100%);
+  border: none;
+}
+.login-submit:hover {
+  background: linear-gradient(135deg, #40916c 0%, #2d6a4f 100%);
+  border: none;
 }

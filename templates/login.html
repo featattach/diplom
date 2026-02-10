@@ -1,23 +1,28 @@
 {% extends "base.html" %}
 {% block title %}Вход — Система учёта оборудования{% endblock %}
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-md-4">
-        <h2 class="mb-4">Вход в систему</h2>
-        {% if error %}
-        <div class="alert alert-danger">{{ error }}</div>
-        {% endif %}
-        <form method="post" action="/login">
-            <div class="mb-3">
-                <label class="form-label">Логин</label>
-                <input type="text" name="username" class="form-control" required autofocus>
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Пароль</label>
-                <input type="password" name="password" class="form-control" required>
-            </div>
-            <button type="submit" class="btn btn-primary">Войти</button>
-        </form>
+<div class="login-page">
+    <div class="login-block">
+        <div class="login-block-header">
+            <span class="login-block-icon" aria-hidden="true">◫</span>
+            <div class="login-block-header-sub">Вход в систему</div>
+        </div>
+        <div class="login-block-body">
+            {% if error %}
+            <div class="alert alert-danger">{{ error }}</div>
+            {% endif %}
+            <form method="post" action="/login">
+                <div class="mb-3">
+                    <label class="form-label">Логин</label>
+                    <input type="text" name="username" class="form-control" placeholder="Введите логин" required autofocus>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Пароль</label>
+                    <input type="password" name="password" class="form-control" placeholder="Введите пароль" required>
+                </div>
+                <button type="submit" class="btn btn-primary login-submit">Войти</button>
+            </form>
+        </div>
     </div>
 </div>
 {% endblock %}
