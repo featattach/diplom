@@ -226,3 +226,60 @@ body {
 .dashboard-chart-card .card-body { min-height: 0; }
 .content-card .dashboard-chart-card .card-header { font-weight: 600; }
 
+/* Мобильная адаптация (смартфоны) */
+@media (max-width: 576px) {
+  .app-header {
+    padding: 0.35rem 0;
+  }
+  .app-header .app-title {
+    font-size: 1.1rem;
+    text-align: center;
+  }
+  .app-header .user-block {
+    position: static;
+    transform: none;
+    margin-top: 0.35rem;
+    width: 100%;
+    justify-content: center;
+  }
+  .main-content {
+    margin-top: 1rem;
+    margin-bottom: 1.25rem;
+  }
+  .content-card {
+    padding: 1rem;
+  }
+  .content-card h1,
+  .content-card .card-title {
+    font-size: 1.25rem;
+  }
+  .content-card .card-subtitle {
+    font-size: 0.85rem;
+  }
+  .app-nav .nav-inner {
+    gap: 0.25rem;
+  }
+  .app-nav .nav-link-custom {
+    padding: 0.3rem 0.5rem;
+    font-size: 0.85rem;
+  }
+  .btn {
+    font-size: 0.85rem;
+    padding: 0.3rem 0.55rem;
+  }
+  .dashboard-chart-card .chart-wrap {
+    max-height: 160px;
+  }
+  .dashboard-chart-card .chart-wrap canvas {
+    max-height: 120px;
+  }
+  .table {
+    font-size: 0.85rem;
+  }
+
+  /* Форма фильтров в одну колонку на телефонах */
+  .content-card form.row {
+    margin-bottom: 0.75rem;
+  }
+}
+

@@ -11,12 +11,12 @@
 {% if filters.inactive_by_activity %}
 <div class="alert alert-info py-2 mb-3 small">Показаны неактивные по последней активности (нет данных или более {{ inactive_days_threshold }} дн.). <a href="{{ request.url_for('assets_list') }}">Сбросить</a></div>
 {% endif %}
-<form method="get" class="row g-3 mb-4">
+<form method="get" class="row g-2 g-md-3 mb-4 row-cols-1 row-cols-md-auto align-items-end">
     {% if filters.inactive_by_activity %}<input type="hidden" name="inactive_by_activity" value="1">{% endif %}
-    <div class="col-auto">
+    <div class="col">
         <input type="text" name="name" class="form-control" placeholder="Название" value="{{ filters.name or '' }}">
     </div>
-    <div class="col-auto">
+    <div class="col">
         <select name="status" class="form-select">
             <option value="">Все статусы</option>
             {% for s in status_choices %}
@@ -24,7 +24,7 @@
             {% endfor %}
         </select>
     </div>
-    <div class="col-auto">
+    <div class="col">
         <select name="equipment_kind" class="form-select">
             <option value="">Все типы техники</option>
             {% for k in equipment_kind_choices %}
@@ -32,7 +32,7 @@
             {% endfor %}
         </select>
     </div>
-    <div class="col-auto">
+    <div class="col">
         <select name="location" class="form-select">
             <option value="">Все расположения</option>
             {% for loc in location_choices %}
@@ -40,7 +40,7 @@
             {% endfor %}
         </select>
     </div>
-    <div class="col-auto">
+    <div class="col">
         <select name="company_id" class="form-select">
             <option value="">Все организации</option>
             {% for c in companies %}
@@ -48,26 +48,27 @@
             {% endfor %}
         </select>
     </div>
-    <div class="col-auto">
-        <button type="submit" class="btn btn-primary">Найти</button>
+    <div class="col">
+        <button type="submit" class="btn btn-primary w-100 w-md-auto">Найти</button>
     </div>
-    <div class="col-auto">
-        <a href="{{ export_url }}" class="btn btn-success">Экспорт в Excel</a>
+    <div class="col">
+        <a href="{{ export_url }}" class="btn btn-success w-100 w-md-auto">Экспорт в Excel</a>
     </div>
 </form>
-<div class="table-responsive">
-    <table class="table table-hover">
+<!-- Десктопная таблица -->
+<div class="table-responsive d-none d-md-block">
+    <table class="table table-hover align-middle">
         <thead>
             <tr>
                 <th>ID</th>
                 <th>Название</th>
-                <th>Модель</th>
-                <th>Тип техники</th>
-                <th>Организация</th>
-                <th>Серийный номер</th>
-                <th>Расположение</th>
+                <th class="d-none d-sm-table-cell">Модель</th>
+                <th class="d-none d-md-table-cell">Тип техники</th>
+                <th class="d-none d-md-table-cell">Организация</th>
+                <th class="d-none d-lg-table-cell">Серийный номер</th>
+                <th class="d-none d-sm-table-cell">Расположение</th>
                 <th>Статус</th>
-                <th>Последняя активность</th>
+                <th class="d-none d-sm-table-cell">Последняя активность</th>
                 <th>Действие</th>
             </tr>
         </thead>
@@ -76,13 +77,13 @@
             <tr class="{% if is_inactive_fn(asset) %}table-warning{% endif %}">
                 <td>{{ asset.id }}</td>
                 <td><a href="{{ request.url_for('asset_detail', asset_id=asset.id) }}">{{ asset.name }}</a></td>
-                <td>{{ asset.model or '—' }}</td>
-                <td>{{ equipment_kind_labels.get(asset.equipment_kind, asset.equipment_kind or '—') }}</td>
-                <td>{% if asset.company %}<a href="{{ request.url_for('company_detail', company_id=asset.company.id) }}">{{ asset.company.name }}</a>{% else %}—{% endif %}</td>
-                <td>{{ asset.serial_number or '—' }}</td>
-                <td>{{ asset.location or '—' }}</td>
+                <td class="d-none d-sm-table-cell">{{ asset.model or '—' }}</td>
+                <td class="d-none d-md-table-cell">{{ equipment_kind_labels.get(asset.equipment_kind, asset.equipment_kind or '—') }}</td>
+                <td class="d-none d-md-table-cell">{% if asset.company %}<a href="{{ request.url_for('company_detail', company_id=asset.company.id) }}">{{ asset.company.name }}</a>{% else %}—{% endif %}</td>
+                <td class="d-none d-lg-table-cell">{{ asset.serial_number or '—' }}</td>
+                <td class="d-none d-sm-table-cell">{{ asset.location or '—' }}</td>
                 <td><span class="badge bg-secondary">{{ status_labels.get(asset.status.value, asset.status.value) }}</span></td>
-                <td>{{ asset.last_seen_at.strftime('%Y-%m-%d %H:%M') if asset.last_seen_at else '—' }}</td>
+                <td class="d-none d-sm-table-cell">{{ asset.last_seen_at.strftime('%Y-%m-%d %H:%M') if asset.last_seen_at else '—' }}</td>
                 <td><a href="{{ request.url_for('asset_detail', asset_id=asset.id) }}" class="btn btn-sm btn-outline-primary">Открыть</a></td>
             </tr>
             {% else %}
@@ -91,5 +92,41 @@
         </tbody>
     </table>
 </div>
-<p class="text-muted"><small>Жёлтым выделены устройства без недавней активности.</small></p>
+
+<!-- Мобильный список-карточки -->
+<div class="d-md-none">
+    {% for asset in assets %}
+    <div class="card mb-2 {% if is_inactive_fn(asset) %}border-warning{% endif %}">
+        <div class="card-body py-2">
+            <div class="d-flex justify-content-between align-items-start mb-1">
+                <div>
+                    <div class="small text-muted">ID {{ asset.id }}</div>
+                    <a href="{{ request.url_for('asset_detail', asset_id=asset.id) }}" class="fw-semibold">{{ asset.name }}</a>
+                </div>
+                <span class="badge bg-secondary ms-2">{{ status_labels.get(asset.status.value, asset.status.value) }}</span>
+            </div>
+            {% if asset.location %}
+            <div class="small text-muted mb-1">Расположение: {{ asset.location }}</div>
+            {% endif %}
+            {% if asset.model %}
+            <div class="small text-muted mb-1">Модель: {{ asset.model }}</div>
+            {% endif %}
+            {% if asset.company %}
+            <div class="small text-muted mb-1">Организация: {{ asset.company.name }}</div>
+            {% endif %}
+            <div class="d-flex justify-content-between align-items-center mt-1">
+                <div class="small text-muted">
+                    Последняя активность:
+                    {{ asset.last_seen_at.strftime('%Y-%m-%d %H:%M') if asset.last_seen_at else '—' }}
+                </div>
+                <a href="{{ request.url_for('asset_detail', asset_id=asset.id) }}" class="btn btn-sm btn-outline-primary ms-2">Открыть</a>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="text-muted small">Нет записей</div>
+    {% endfor %}
+</div>
+
+<p class="text-muted"><small>Жёлтым / с жёлтой обводкой выделены устройства без недавней активности.</small></p>
 {% endblock %}
