@@ -35,6 +35,7 @@ class EquipmentKind(str, enum.Enum):
     scanner = "scanner"       # сканер
     switch = "switch"         # коммутатор
     server = "server"         # сервер (есть поле U — юниты)
+    sip_phone = "sip_phone"   # SIP-телефон
 
 
 class Asset(Base):
@@ -66,6 +67,12 @@ class Asset(Base):
     rack_units: Mapped[int] = mapped_column(Integer, nullable=True)  # сервер: высота в юнитах (U)
     extra_components: Mapped[str] = mapped_column(Text, nullable=True)  # JSON: доп. устройства
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
+    # ОС (для ПК, ноутбуков, серверов)
+    os: Mapped[str] = mapped_column(String(64), nullable=True)
+    # Сетевые интерфейсы: JSON [{ "label": "Сетевая карта 1", "type": "network"|"oob", "ip": "..." }]
+    network_interfaces: Mapped[str] = mapped_column(Text, nullable=True)
+    # Кто сейчас использует (вводимое поле)
+    current_user: Mapped[str] = mapped_column(String(256), nullable=True)
 
     events: Mapped[list["AssetEvent"]] = relationship(
         "AssetEvent",
@@ -87,5 +94,7 @@ class AssetEvent(Base):
     description: Mapped[str] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=True)
+    # JSON: список {"field_label": "Расположение", "old": "...", "new": "..."} для отображения «было → стало»
+    changes_json: Mapped[str] = mapped_column(Text, nullable=True)
 
     asset: Mapped["Asset"] = relationship("Asset", back_populates="events")

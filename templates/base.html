@@ -34,7 +34,7 @@
     <nav class="app-nav">
         <div class="container">
             <div class="nav-inner">
-                <a class="nav-link-custom {% if request.url.path == '/dashboard' or request.url.path == '/' %}active{% endif %}" href="{{ request.url_for('dashboard') }}">Главная</a>
+                <a class="nav-link-custom {% if request.url.path == '/dashboard' or request.url.path == '/' %}active{% endif %}" href="{{ request.url_for('dashboard') }}">Дашборд</a>
                 <a class="nav-link-custom {% if request.url.path.startswith('/assets') %}active{% endif %}" href="{{ request.url_for('assets_list') }}">Оборудование</a>
                 <a class="nav-link-custom {% if request.url.path == '/movements' %}active{% endif %}" href="{{ request.url_for('movements') }}">Перемещения</a>
                 <a class="nav-link-custom {% if request.url.path.startswith('/inventory') or request.url.path.startswith('/companies') %}active{% endif %}" href="{{ request.url_for('inventory_list') }}">Инвентаризация</a>

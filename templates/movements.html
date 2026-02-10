@@ -11,6 +11,7 @@
                 <th>Тип события</th>
                 <th>Оборудование</th>
                 <th>Комментарий</th>
+                <th>Изменения (было → стало)</th>
             </tr>
         </thead>
         <tbody>
@@ -20,9 +21,20 @@
                 <td><span class="badge bg-info">{{ event_type_labels.get(e.event_type.value, e.event_type.value) }}</span></td>
                 <td>{% if e.asset %}<a href="{{ request.url_for('asset_detail', asset_id=e.asset.id) }}">{{ e.asset.name }}</a>{% else %}—{% endif %}</td>
                 <td>{{ e.description or '—' }}</td>
+                <td>
+                    {% if e.changes_list %}
+                    <ul class="list-unstyled mb-0 small">
+                        {% for ch in e.changes_list %}
+                        <li><strong>{{ ch.field_label }}</strong>: <span class="text-muted">{{ ch.old }}</span> → <span>{{ ch.new }}</span></li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    —
+                    {% endif %}
+                </td>
             </tr>
             {% else %}
-            <tr><td colspan="4" class="text-muted">Нет записей</td></tr>
+            <tr><td colspan="5" class="text-muted">Нет записей</td></tr>
             {% endfor %}
         </tbody>
     </table>

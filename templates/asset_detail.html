@@ -1,18 +1,27 @@
 {% extends "base.html" %}
 {% block title %}{{ asset.name }} — Система учёта оборудования{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="card-title">Карточка оборудования</h1>
+<nav aria-label="breadcrumb" class="mb-2">
+    <ol class="breadcrumb mb-0">
+        <li class="breadcrumb-item"><a href="{{ request.url_for('assets_list') }}">Оборудование</a></li>
+        <li class="breadcrumb-item active" aria-current="page">{{ asset.name }}</li>
+    </ol>
+</nav>
+<div class="asset-card-header d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
     <div>
+        <h1 class="h3 mb-1">{{ asset.name }}{% if asset.serial_number %} <span class="text-muted fw-normal">({{ asset.serial_number }})</span>{% endif %}</h1>
+        <span class="badge {% if asset.status.value == 'active' %}bg-success{% elif asset.status.value == 'inactive' %}bg-secondary{% elif asset.status.value == 'maintenance' %}bg-warning text-dark{% else %}bg-dark{% endif %}">{{ asset.status.value }}</span>
+        {% if is_inactive %}
+        <span class="badge bg-warning text-dark ms-1">Нет недавней активности</span>
+        {% endif %}
+    </div>
+    <div class="d-flex gap-2">
         {% if user.role.value in ['admin', 'user'] %}
         <a href="{{ request.url_for('asset_edit', asset_id=asset.id) }}" class="btn btn-primary">Внести изменения</a>
         {% endif %}
-        <a href="{{ request.url_for('assets_list') }}" class="btn btn-outline-secondary">К списку</a>
+        <a href="{{ request.url_for('assets_list') }}" class="btn btn-outline-secondary">← К списку</a>
     </div>
 </div>
-{% if is_inactive %}
-<div class="alert alert-warning-custom alert">Устройство неактивно (нет недавней активности).</div>
-{% endif %}
 {% if inventory_campaign %}
 <div class="alert alert-info d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
     <span>Кампания инвентаризации: <strong>{{ inventory_campaign.name }}</strong></span>
@@ -30,105 +39,220 @@
 </form>
 {% endif %}
 {% endif %}
-<dl class="row mb-4">
-    <dt class="col-sm-3">Инв. номер / ID</dt><dd class="col-sm-9">{{ asset.id }}</dd>
-    <dt class="col-sm-3">Название</dt><dd class="col-sm-9">{{ asset.name }}</dd>
-    <dt class="col-sm-3">Тип техники</dt><dd class="col-sm-9">{{ equipment_kind_labels.get(asset.equipment_kind, asset.equipment_kind or '—') }}</dd>
-    <dt class="col-sm-3">Модель</dt><dd class="col-sm-9">{{ asset.model or '—' }}</dd>
-    <dt class="col-sm-3">Серийный номер</dt><dd class="col-sm-9">{{ asset.serial_number or '—' }}</dd>
-    <dt class="col-sm-3">Категория</dt><dd class="col-sm-9">{{ asset.asset_type or '—' }}</dd>
-    <dt class="col-sm-3">Расположение</dt><dd class="col-sm-9">{{ asset.location or '—' }}</dd>
-    <dt class="col-sm-3">Организация</dt><dd class="col-sm-9">{% if asset.company %}<a href="{{ request.url_for('company_detail', company_id=asset.company.id) }}">{{ asset.company.name }}</a>{% else %}—{% endif %}</dd>
-    <dt class="col-sm-3">Статус</dt><dd class="col-sm-9"><span class="badge bg-secondary">{{ asset.status.value }}</span></dd>
-    <dt class="col-sm-3">Последняя активность</dt><dd class="col-sm-9">{{ asset.last_seen_at.strftime('%Y-%m-%d %H:%M') if asset.last_seen_at else '—' }}</dd>
-    {% if asset.equipment_kind == 'server' and asset.rack_units is not none %}
-    <dt class="col-sm-3">Юниты (U)</dt><dd class="col-sm-9">{{ asset.rack_units }}</dd>
-    {% endif %}
-    {% if asset.cpu or asset.ram or asset.disk1_type or asset.disk1_capacity or asset.network_card or asset.motherboard or asset.power_supply or asset.monitor_diagonal or asset.screen_diagonal or asset.screen_resolution %}
-    <dt class="col-sm-3">Процессор</dt><dd class="col-sm-9">{{ asset.cpu or '—' }}</dd>
-    <dt class="col-sm-3">ОЗУ</dt><dd class="col-sm-9">{{ asset.ram or '—' }}</dd>
-    <dt class="col-sm-3">Диск (тип / объём)</dt><dd class="col-sm-9">{{ (asset.disk1_type or '') + (' ' + asset.disk1_capacity if asset.disk1_capacity else '') or '—' }}</dd>
-    <dt class="col-sm-3">Сетевая карта</dt><dd class="col-sm-9">{{ asset.network_card or '—' }}</dd>
-    <dt class="col-sm-3">Материнская плата</dt><dd class="col-sm-9">{{ asset.motherboard or '—' }}</dd>
-    <dt class="col-sm-3">Блок питания</dt><dd class="col-sm-9">{{ asset.power_supply or '—' }}</dd>
-    <dt class="col-sm-3">Монитор (диагональ)</dt><dd class="col-sm-9">{{ asset.monitor_diagonal or '—' }}</dd>
-    <dt class="col-sm-3">Диагональ экрана</dt><dd class="col-sm-9">{{ asset.screen_diagonal or '—' }}</dd>
-    <dt class="col-sm-3">Разрешение экрана</dt><dd class="col-sm-9">{{ asset.screen_resolution or '—' }}</dd>
-    {% endif %}
-    {% if extra_components_list %}
-    <dt class="col-sm-3">Доп. устройства</dt>
-    <dd class="col-sm-9">
-        <ul class="list-unstyled mb-0">
-            {% for c in extra_components_list %}
-            <li><span class="badge bg-light text-dark">{{ component_type_labels.get(c.type, c.type) }}</span> {{ c.name or '—' }}</li>
-            {% endfor %}
-        </ul>
-    </dd>
-    {% endif %}
-    <dt class="col-sm-3">Описание</dt><dd class="col-sm-9">{{ asset.description or '—' }}</dd>
-</dl>
-<div class="qr-block border rounded p-3 mb-4 bg-light">
-    <h3 class="h6 mb-3">QR-код для инвентаризации</h3>
-    {% if qr_exists %}
-    <div id="qr-print-area" class="d-flex flex-wrap align-items-center gap-3">
-        <img src="{{ request.url_for('asset_qr_image', asset_id=asset.id) }}" alt="QR-код" class="qr-preview" width="160" height="160">
-        <div>
-            <p class="text-muted small mb-2">Сканирование откроет эту карточку на устройстве.</p>
-            <form method="post" action="{{ request.url_for('asset_generate_qr', asset_id=asset.id) }}" class="d-inline me-1">
-                <button type="submit" class="btn btn-outline-secondary btn-sm">Перегенерировать QR</button>
-            </form>
-            <button type="button" class="btn btn-outline-primary btn-sm" id="btn-print-qr"
-                data-asset-name="{{ asset.name }}{% if asset.serial_number %} ({{ asset.serial_number }}){% endif %}"
-                data-qr-src="{{ request.url_for('asset_qr_image', asset_id=asset.id) }}">Распечатать QR-код</button>
+
+<div class="row g-3 mb-4">
+    <div class="col-sm-6 col-md-3">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body py-3">
+                <div class="text-muted small">ID</div>
+                <div class="fw-semibold">#{{ asset.id }}</div>
+            </div>
         </div>
     </div>
-    {% else %}
-    <p class="text-muted small mb-2">Сгенерируйте QR-код — его можно распечатать и наклеить на технику. При сканировании откроется эта карточка.</p>
-    <form method="post" action="{{ request.url_for('asset_generate_qr', asset_id=asset.id) }}">
-        <button type="submit" class="btn btn-primary">Сгенерировать QR-код</button>
-    </form>
+    <div class="col-sm-6 col-md-3">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body py-3">
+                <div class="text-muted small">Тип техники</div>
+                <div class="fw-semibold">{{ equipment_kind_labels.get(asset.equipment_kind, asset.equipment_kind or '—') }}</div>
+            </div>
+        </div>
+    </div>
+    {% if asset.os %}
+    <div class="col-sm-6 col-md-3">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body py-3">
+                <div class="text-muted small">ОС</div>
+                <div class="fw-semibold">{{ os_labels.get(asset.os, asset.os) }}</div>
+            </div>
+        </div>
+    </div>
     {% endif %}
+    <div class="col-sm-6 col-md-3">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body py-3">
+                <div class="text-muted small">Расположение</div>
+                <div class="fw-semibold">{{ asset.location or (network_interfaces_list[0].ip if network_interfaces_list else '—') }}</div>
+            </div>
+        </div>
+    </div>
 </div>
-{% if user.role.value in ['admin', 'user'] %}
-<h3 class="h5 mt-4">Добавить событие</h3>
-<form method="post" action="{{ request.url_for('asset_add_event', asset_id=asset.id) }}" class="row g-2 mb-4">
-    <div class="col-auto">
-        <select name="event_type" class="form-select" required>
-            {% for t in event_type_options %}
-            <option value="{{ t.value }}">{{ t.label }}</option>
-            {% endfor %}
-        </select>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-light">
+        <h2 class="h6 mb-0">Основная информация</h2>
     </div>
-    <div class="col">
-        <input type="text" name="description" class="form-control" placeholder="Комментарий">
+    <div class="card-body">
+        <dl class="row mb-0">
+            <dt class="col-sm-3 text-muted">Модель</dt><dd class="col-sm-9">{{ asset.model or '—' }}</dd>
+            <dt class="col-sm-3 text-muted">Серийный номер</dt><dd class="col-sm-9">{{ asset.serial_number or '—' }}</dd>
+            <dt class="col-sm-3 text-muted">Категория</dt><dd class="col-sm-9">{{ asset.asset_type or '—' }}</dd>
+            <dt class="col-sm-3 text-muted">Организация</dt><dd class="col-sm-9">{% if asset.company %}<a href="{{ request.url_for('company_detail', company_id=asset.company.id) }}">{{ asset.company.name }}</a>{% else %}—{% endif %}</dd>
+            <dt class="col-sm-3 text-muted">Последняя активность</dt><dd class="col-sm-9">{{ asset.last_seen_at.strftime('%Y-%m-%d %H:%M') if asset.last_seen_at else '—' }}</dd>
+            {% if asset.current_user %}
+            <dt class="col-sm-3 text-muted">Пользователь (кто использует)</dt><dd class="col-sm-9">{{ asset.current_user }}</dd>
+            {% endif %}
+            <dt class="col-sm-3 text-muted">Описание</dt><dd class="col-sm-9">{{ asset.description or '—' }}</dd>
+        </dl>
     </div>
-    <div class="col-auto">
-        <button type="submit" class="btn btn-primary">Добавить</button>
+</div>
+
+{% if network_interfaces_list %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-light">
+        <h2 class="h6 mb-0">Сетевые интерфейсы и IP</h2>
     </div>
-</form>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Интерфейс</th>
+                        <th>Тип</th>
+                        <th>IP-адрес</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ni in network_interfaces_list %}
+                    <tr>
+                        <td>{{ ni.label }}</td>
+                        <td><span class="badge bg-light text-dark">{{ 'OOB' if ni.type == 'oob' else 'Сетевая карта' }}</span></td>
+                        <td><code>{{ ni.ip or '—' }}</code></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 {% endif %}
-<h3 class="h5 mt-4">История изменений</h3>
-<div class="table-responsive">
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Дата</th>
-                <th>Тип события</th>
-                <th>Описание</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for e in events %}
-            <tr>
-                <td>{{ e.created_at.strftime('%Y-%m-%d %H:%M') if e.created_at else '—' }}</td>
-                <td><span class="badge bg-info">{{ event_type_labels.get(e.event_type.value, e.event_type.value) if event_type_labels else e.event_type.value }}</span></td>
-                <td>{{ e.description or '—' }}</td>
-            </tr>
-            {% else %}
-            <tr><td colspan="3" class="text-muted">Нет событий</td></tr>
-            {% endfor %}
-        </tbody>
-    </table>
+
+{% if asset.cpu or asset.ram or asset.disk1_type or asset.network_card or asset.rack_units or extra_components_list %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-light">
+        <h2 class="h6 mb-0">Технические характеристики</h2>
+    </div>
+    <div class="card-body">
+        <dl class="row mb-0">
+            {% if asset.equipment_kind == 'server' and asset.rack_units is not none %}
+            <dt class="col-sm-3 text-muted">Юниты (U)</dt><dd class="col-sm-9">{{ asset.rack_units }}</dd>
+            {% endif %}
+            {% if asset.cpu or asset.ram or asset.disk1_type or asset.disk1_capacity %}
+            <dt class="col-sm-3 text-muted">Процессор</dt><dd class="col-sm-9">{{ asset.cpu or '—' }}</dd>
+            <dt class="col-sm-3 text-muted">ОЗУ</dt><dd class="col-sm-9">{{ asset.ram or '—' }}</dd>
+            <dt class="col-sm-3 text-muted">Диск</dt><dd class="col-sm-9">{{ (asset.disk1_type or '') + (' ' + asset.disk1_capacity if asset.disk1_capacity else '') or '—' }}</dd>
+            {% endif %}
+            {% if asset.network_card %}<dt class="col-sm-3 text-muted">Сетевая карта</dt><dd class="col-sm-9">{{ asset.network_card }}</dd>{% endif %}
+            {% if asset.motherboard %}<dt class="col-sm-3 text-muted">Материнская плата</dt><dd class="col-sm-9">{{ asset.motherboard }}</dd>{% endif %}
+            {% if asset.screen_diagonal or asset.screen_resolution %}
+            <dt class="col-sm-3 text-muted">Экран</dt><dd class="col-sm-9">{{ asset.screen_diagonal or '—' }} {{ asset.screen_resolution or '' }}</dd>
+            {% endif %}
+            {% if extra_components_list %}
+            <dt class="col-sm-3 text-muted">Доп. устройства</dt>
+            <dd class="col-sm-9">
+                <ul class="list-unstyled mb-0">
+                    {% for c in extra_components_list %}
+                    <li><span class="badge bg-light text-dark">{{ component_type_labels.get(c.type, c.type) }}</span> {{ c.name or '—' }}</li>
+                    {% endfor %}
+                </ul>
+            </dd>
+            {% endif %}
+        </dl>
+    </div>
+</div>
+{% endif %}
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-light">
+        <h2 class="h6 mb-0">QR-код для инвентаризации</h2>
+    </div>
+    <div class="card-body">
+        {% if qr_exists %}
+        <div id="qr-print-area" class="d-flex flex-wrap align-items-center gap-3">
+            <img src="{{ request.url_for('asset_qr_image', asset_id=asset.id) }}" alt="QR-код" class="qr-preview" width="160" height="160">
+            <div>
+                <p class="text-muted small mb-2">Сканирование откроет эту карточку на устройстве.</p>
+                <form method="post" action="{{ request.url_for('asset_generate_qr', asset_id=asset.id) }}" class="d-inline me-1">
+                    <button type="submit" class="btn btn-outline-secondary btn-sm">Перегенерировать QR</button>
+                </form>
+                <button type="button" class="btn btn-outline-primary btn-sm" id="btn-print-qr"
+                    data-asset-name="{{ asset.name }}{% if asset.serial_number %} ({{ asset.serial_number }}){% endif %}"
+                    data-qr-src="{{ request.url_for('asset_qr_image', asset_id=asset.id) }}">Распечатать QR-код</button>
+            </div>
+        </div>
+        {% else %}
+        <p class="text-muted small mb-2">Сгенерируйте QR-код — его можно распечатать и наклеить на технику.</p>
+        <form method="post" action="{{ request.url_for('asset_generate_qr', asset_id=asset.id) }}">
+            <button type="submit" class="btn btn-primary">Сгенерировать QR-код</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+{% if user.role.value in ['admin', 'user'] %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-light">
+        <h2 class="h6 mb-0">Добавить событие</h2>
+    </div>
+    <div class="card-body">
+        <form method="post" action="{{ request.url_for('asset_add_event', asset_id=asset.id) }}" class="row g-2">
+            <div class="col-auto">
+                <select name="event_type" class="form-select" required>
+                    {% for t in event_type_options %}
+                    <option value="{{ t.value }}">{{ t.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col">
+                <input type="text" name="description" class="form-control" placeholder="Комментарий">
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary">Добавить</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-light">
+        <h2 class="h6 mb-0">История изменений</h2>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Дата</th>
+                        <th>Тип события</th>
+                        <th>Описание</th>
+                        <th>Изменения (было → стало)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for e in events %}
+                    <tr>
+                        <td>{{ e.created_at.strftime('%Y-%m-%d %H:%M') if e.created_at else '—' }}</td>
+                        <td><span class="badge bg-info">{{ event_type_labels.get(e.event_type.value, e.event_type.value) if event_type_labels else e.event_type.value }}</span></td>
+                        <td>{{ e.description or '—' }}</td>
+                        <td>
+                            {% if e.changes_list %}
+                            <ul class="list-unstyled mb-0 small">
+                                {% for ch in e.changes_list %}
+                                <li><strong>{{ ch.field_label }}</strong>: <span class="text-muted">{{ ch.old }}</span> → <span>{{ ch.new }}</span></li>
+                                {% endfor %}
+                            </ul>
+                            {% else %}
+                            —
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-muted">Нет событий</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 {% endblock %}
 {% block scripts %}

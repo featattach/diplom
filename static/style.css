@@ -213,3 +213,16 @@ body {
   border: none;
 }
 
+/* Дашборд — компактные карточки и диаграммы, чтобы влазило на экран */
+.dashboard-stat-card .card-body { min-height: 0; }
+.dashboard-chart-card .chart-wrap {
+  max-height: 180px;
+  position: relative;
+}
+.dashboard-chart-card .chart-wrap canvas {
+  max-height: 140px;
+  width: 100% !important;
+}
+.dashboard-chart-card .card-body { min-height: 0; }
+.content-card .dashboard-chart-card .card-header { font-weight: 600; }
+

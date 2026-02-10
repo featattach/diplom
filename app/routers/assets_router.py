@@ -44,6 +44,7 @@ EQUIPMENT_KIND_LABELS = {
     "scanner": "Сканер",
     "switch": "Коммутатор",
     "server": "Сервер",
+    "sip_phone": "SIP-телефон",
     "monoblock": "Моноблок",  # устаревший тип, для старых записей
 }
 EQUIPMENT_KIND_CHOICES = [{"value": k, "label": v} for k, v in EQUIPMENT_KIND_LABELS.items()]
@@ -53,6 +54,42 @@ EQUIPMENT_KIND_HAS_SCREEN = ("laptop", "monitor")
 EQUIPMENT_KIND_NEEDS_RACK = ("server",)
 # Типы с общими тех. полями (процессор, ОЗУ, диски и т.д.)
 EQUIPMENT_KIND_HAS_TECH = ("desktop", "nettop", "laptop", "server")
+# Типы с выбором ОС (ПК, ноутбук, сервер, неттоп)
+EQUIPMENT_KIND_HAS_OS = ("desktop", "nettop", "laptop", "server")
+# Варианты ОС
+OS_OPTIONS = [
+    {"value": "linux", "label": "Linux"},
+    {"value": "windows_7", "label": "Windows 7"},
+    {"value": "windows_10", "label": "Windows 10"},
+    {"value": "windows_11", "label": "Windows 11"},
+]
+# Подписи полей для журнала «было → стало»
+ASSET_FIELD_LABELS = {
+    "name": "Название",
+    "serial_number": "Серийный номер",
+    "asset_type": "Категория",
+    "equipment_kind": "Тип техники",
+    "model": "Модель",
+    "location": "Расположение",
+    "status": "Статус",
+    "description": "Описание",
+    "last_seen_at": "Последняя активность",
+    "cpu": "Процессор",
+    "ram": "ОЗУ",
+    "disk1_type": "Тип диска",
+    "disk1_capacity": "Объём диска",
+    "network_card": "Сетевая карта",
+    "motherboard": "Материнская плата",
+    "screen_diagonal": "Диагональ экрана",
+    "screen_resolution": "Разрешение экрана",
+    "power_supply": "Блок питания",
+    "monitor_diagonal": "Монитор (диагональ)",
+    "rack_units": "Юниты (U)",
+    "company_id": "Организация",
+    "os": "ОС",
+    "network_interfaces": "Сетевые интерфейсы",
+    "current_user": "Пользователь (кто использует)",
+}
 # Типы доп. устройств (для блока «Доп. устройства»)
 EXTRA_COMPONENT_TYPES = [
     {"value": "cpu", "label": "Процессор"},
@@ -90,6 +127,7 @@ async def assets_list(
     current_user: User = Depends(require_user),
     name: str | None = Query(None),
     status: str | None = Query(None),
+    inactive_by_activity: bool = Query(False, description="Неактивные по последней активности (как на дашборде)"),
     equipment_kind: str | None = Query(None),
     location: str | None = Query(None),
     company_id: str | None = Query(None),
@@ -100,7 +138,10 @@ async def assets_list(
     q = select(Asset).options(selectinload(Asset.company)).order_by(Asset.id)
     if name:
         q = q.where(Asset.name.ilike(f"%{name}%"))
-    if status_filter is not None:
+    if inactive_by_activity:
+        # Не фильтруем по status — отфильтруем в Python по last_seen_at (как на дашборде)
+        q = q.where(Asset.status != AssetStatus.retired)
+    elif status_filter is not None:
         q = q.where(Asset.status == status_filter)
     if equipment_kind:
         q = q.where(Asset.equipment_kind == equipment_kind)
@@ -113,6 +154,8 @@ async def assets_list(
             pass
     result = await db.execute(q)
     assets = list(result.scalars().all())
+    if inactive_by_activity:
+        assets = [a for a in assets if is_asset_inactive(a)]
     companies_result = await db.execute(select(Company).order_by(Company.name))
     companies = list(companies_result.scalars().all())
     locations_result = await db.execute(
@@ -127,12 +170,13 @@ async def assets_list(
             "assets": assets,
             "companies": companies,
             "location_choices": location_choices,
-            "filters": {"name": name, "status": status, "equipment_kind": equipment_kind, "location": location or "", "company_id": company_id or ""},
+            "filters": {"name": name, "status": status, "inactive_by_activity": inactive_by_activity, "equipment_kind": equipment_kind, "location": location or "", "company_id": company_id or ""},
             "status_choices": AssetStatus,
             "status_labels": STATUS_LABELS,
             "equipment_kind_choices": EQUIPMENT_KIND_CHOICES,
             "equipment_kind_labels": EQUIPMENT_KIND_LABELS,
             "is_inactive_fn": is_asset_inactive,
+            "inactive_days_threshold": INACTIVE_DAYS_THRESHOLD,
         },
     )
 
@@ -169,9 +213,19 @@ async def asset_detail(
     if not asset:
         raise HTTPException(404, "Asset not found")
     events = sorted(asset.events, key=lambda e: e.created_at or datetime.min, reverse=True)
+    import json as _json
+    for e in events:
+        e.changes_list = []
+        if getattr(e, "changes_json", None):
+            try:
+                e.changes_list = _json.loads(e.changes_json)
+            except (TypeError, ValueError, _json.JSONDecodeError):
+                pass
     extra_components_list = _parse_extra_components(asset)
     component_type_labels = {t["value"]: t["label"] for t in EXTRA_COMPONENT_TYPES}
     qr_path = QR_DIR / f"{asset.id}.png"
+    network_interfaces_list = _parse_network_interfaces(asset)
+    os_labels = {o["value"]: o["label"] for o in OS_OPTIONS}
 
     inventory_campaign = None
     inventory_item = None
@@ -204,6 +258,10 @@ async def asset_detail(
             "qr_exists": qr_path.exists(),
             "inventory_campaign": inventory_campaign,
             "inventory_item": inventory_item,
+            "network_interfaces_list": network_interfaces_list,
+            "os_options": OS_OPTIONS,
+            "equipment_kind_has_os": EQUIPMENT_KIND_HAS_OS,
+            "os_labels": os_labels,
         },
     )
 
@@ -306,8 +364,11 @@ async def asset_create_form(
             "equipment_kind_has_screen": EQUIPMENT_KIND_HAS_SCREEN,
             "equipment_kind_needs_rack": EQUIPMENT_KIND_NEEDS_RACK,
             "equipment_kind_has_tech": EQUIPMENT_KIND_HAS_TECH,
+            "equipment_kind_has_os": EQUIPMENT_KIND_HAS_OS,
             "extra_component_types": EXTRA_COMPONENT_TYPES,
             "extra_components_list": [],
+            "os_options": OS_OPTIONS,
+            "network_interfaces_list": [],
         },
     )
 
@@ -317,6 +378,7 @@ def _parse_asset_form(
     cpu, ram, disk1_type, disk1_capacity, network_card, motherboard,
     screen_diagonal, screen_resolution, power_supply, monitor_diagonal,
     rack_units=None, extra_components_json=None, company_id=None,
+    os=None, network_interfaces_json=None, current_user=None,
 ):
     import json
     from datetime import datetime
@@ -342,6 +404,8 @@ def _parse_asset_form(
         "monitor_diagonal": monitor_diagonal or None,
         "rack_units": int(rack_units) if rack_units not in (None, "") else None,
         "company_id": int(company_id) if company_id not in (None, "") else None,
+        "os": (os or "").strip() or None,
+        "current_user": (current_user or "").strip() or None,
     }
     if extra_components_json:
         try:
@@ -350,6 +414,13 @@ def _parse_asset_form(
             data["extra_components"] = None
     else:
         data["extra_components"] = None
+    if network_interfaces_json:
+        try:
+            data["network_interfaces"] = json.dumps(json.loads(network_interfaces_json), ensure_ascii=False)
+        except (json.JSONDecodeError, TypeError):
+            data["network_interfaces"] = None
+    else:
+        data["network_interfaces"] = None
     return data
 
 
@@ -359,6 +430,120 @@ def _parse_extra_components(asset):
         return []
     try:
         return json.loads(asset.extra_components)
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
+def _format_event_value(val) -> str:
+    """Форматирует значение для отображения в журнале «было → стало»."""
+    if val is None:
+        return "—"
+    if hasattr(val, "value"):  # enum
+        return str(val.value)
+    if hasattr(val, "isoformat"):
+        return val.isoformat()[:19].replace("T", " ")
+    return str(val)
+
+
+def _format_network_interfaces_for_changes(json_str) -> str:
+    """Читаемое представление сетевых интерфейсов без сырого JSON (label, type, ip)."""
+    import json
+    if not json_str:
+        return "—"
+    try:
+        arr = json.loads(json_str)
+        if not isinstance(arr, list) or not arr:
+            return "—"
+        parts = []
+        for x in arr:
+            label = str(x.get("label") or "Интерфейс").strip()
+            ip = str(x.get("ip") or "").strip()
+            kind = str(x.get("type") or "network")
+            if kind == "oob":
+                parts.append(f"OOB: {ip}" if ip else "OOB")
+            else:
+                parts.append(f"{label}: {ip}" if ip else label)
+        return "; ".join(parts)
+    except (TypeError, json.JSONDecodeError):
+        return "—"
+
+
+def _format_extra_components_for_changes(json_str) -> str:
+    """Читаемое представление доп. устройств без сырого JSON."""
+    import json
+    if not json_str:
+        return "—"
+    try:
+        arr = json.loads(json_str)
+        if not isinstance(arr, list) or not arr:
+            return "—"
+        type_labels = {t["value"]: t["label"] for t in EXTRA_COMPONENT_TYPES}
+        parts = []
+        for x in arr:
+            t = x.get("type") or "other"
+            name = (x.get("name") or "").strip()
+            lbl = type_labels.get(t, t)
+            parts.append(f"{lbl}: {name}" if name else lbl)
+        return "; ".join(parts)
+    except (TypeError, json.JSONDecodeError):
+        return "—"
+
+
+def _build_asset_changes(asset: Asset, data: dict) -> list[dict]:
+    """Сравнивает текущее состояние актива с новыми данными, возвращает список изменений."""
+    import json
+    changes = []
+    for key, new_val in data.items():
+        if key == "extra_components":
+            old_raw = getattr(asset, key, None)
+            old_str = _format_extra_components_for_changes(old_raw)
+            new_str = _format_extra_components_for_changes(new_val)
+            if old_str != new_str:
+                changes.append({
+                    "field_label": ASSET_FIELD_LABELS.get(key, key),
+                    "old": old_str,
+                    "new": new_str,
+                })
+            continue
+        if key == "network_interfaces":
+            old_raw = getattr(asset, key, None)
+            old_str = _format_network_interfaces_for_changes(old_raw)
+            new_str = _format_network_interfaces_for_changes(new_val)
+            if old_str != new_str:
+                changes.append({
+                    "field_label": ASSET_FIELD_LABELS.get(key, key),
+                    "old": old_str,
+                    "new": new_str,
+                })
+            continue
+        old_val = getattr(asset, key, None)
+        if old_val == new_val:
+            continue
+        old_str = _format_event_value(old_val)
+        new_str = _format_event_value(new_val)
+        if old_str == new_str:
+            continue
+        changes.append({
+            "field_label": ASSET_FIELD_LABELS.get(key, key),
+            "old": old_str,
+            "new": new_str,
+        })
+    return changes
+
+
+def _parse_network_interfaces(asset) -> list[dict]:
+    """Возвращает список {label, type, ip} из asset.network_interfaces JSON."""
+    import json
+    if not getattr(asset, "network_interfaces", None):
+        return []
+    try:
+        raw = json.loads(asset.network_interfaces)
+        if not isinstance(raw, list):
+            return []
+        return [
+            {"label": str(x.get("label") or "—"), "type": str(x.get("type") or "network"), "ip": str(x.get("ip") or "")}
+            for x in raw
+        ]
     except (json.JSONDecodeError, TypeError):
         return []
 
@@ -389,12 +574,16 @@ async def asset_create(
     rack_units: str | None = Form(None),
     extra_components: str | None = Form(None),
     company_id: str | None = Form(None),
+    os: str | None = Form(None),
+    network_interfaces: str | None = Form(None),
+    assigned_user: str | None = Form(None),
 ):
     data = _parse_asset_form(
         name, serial_number, asset_type, equipment_kind, model, location, status, description, last_seen_at,
         cpu, ram, disk1_type, disk1_capacity, network_card, motherboard,
         screen_diagonal, screen_resolution, power_supply, monitor_diagonal,
         rack_units=rack_units, extra_components_json=extra_components, company_id=company_id,
+        os=os, network_interfaces_json=network_interfaces, current_user=assigned_user,
     )
     asset = Asset(**data)
     db.add(asset)
@@ -437,8 +626,11 @@ async def asset_edit_form(
             "equipment_kind_has_screen": EQUIPMENT_KIND_HAS_SCREEN,
             "equipment_kind_needs_rack": EQUIPMENT_KIND_NEEDS_RACK,
             "equipment_kind_has_tech": EQUIPMENT_KIND_HAS_TECH,
+            "equipment_kind_has_os": EQUIPMENT_KIND_HAS_OS,
             "extra_component_types": EXTRA_COMPONENT_TYPES,
             "extra_components_list": _parse_extra_components(asset),
+            "os_options": OS_OPTIONS,
+            "network_interfaces_list": _parse_network_interfaces(asset),
         },
     )
 
@@ -470,27 +662,32 @@ async def asset_edit(
     rack_units: str | None = Form(None),
     extra_components: str | None = Form(None),
     company_id: str | None = Form(None),
+    os: str | None = Form(None),
+    network_interfaces: str | None = Form(None),
+    assigned_user: str | None = Form(None),
 ):
     result = await db.execute(select(Asset).where(Asset.id == asset_id))
     asset = result.scalar_one_or_none()
     if not asset:
-        from fastapi import HTTPException
         raise HTTPException(404, "Asset not found")
     data = _parse_asset_form(
         name, serial_number, asset_type, equipment_kind, model, location, status, description, last_seen_at,
         cpu, ram, disk1_type, disk1_capacity, network_card, motherboard,
         screen_diagonal, screen_resolution, power_supply, monitor_diagonal,
         rack_units=rack_units, extra_components_json=extra_components, company_id=company_id,
+        os=os, network_interfaces_json=network_interfaces, current_user=assigned_user,
     )
+    changes = _build_asset_changes(asset, data)
     for key, value in data.items():
         setattr(asset, key, value)
     await db.flush()
-    # Create update event
+    import json
     event = AssetEvent(
         asset_id=asset_id,
         event_type=AssetEventType.updated,
-        description="Asset updated",
+        description="Изменение карточки" if changes else "Asset updated",
         created_by_id=current_user.id,
+        changes_json=json.dumps(changes, ensure_ascii=False) if changes else None,
     )
     db.add(event)
     await db.flush()

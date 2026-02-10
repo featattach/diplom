@@ -31,6 +31,14 @@ async def movements(
         .limit(500)
     )
     events = list(result.scalars().all())
+    import json
+    for e in events:
+        e.changes_list = []
+        if getattr(e, "changes_json", None):
+            try:
+                e.changes_list = json.loads(e.changes_json)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                pass
     return templates.TemplateResponse(
         "movements.html",
         {

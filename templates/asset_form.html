@@ -45,6 +45,26 @@
             {% endfor %}
         </select>
     </div>
+    <div class="mb-3">
+        <label class="form-label">Пользователь (кто сейчас использует)</label>
+        <input type="text" name="assigned_user" class="form-control" value="{{ asset.current_user if asset and asset.current_user else '' }}" placeholder="ФИО или логин">
+    </div>
+    <div class="mb-3" id="os_block" style="display:none;">
+        <label class="form-label">Операционная система</label>
+        <select name="os" class="form-select">
+            <option value="">— не выбрана —</option>
+            {% for o in os_options %}
+            <option value="{{ o.value }}" {% if asset and asset.os == o.value %}selected{% endif %}>{{ o.label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Сетевые интерфейсы и IP-адреса</label>
+        <p class="text-muted small">Добавьте строку для каждой сетевой карты или OOB (out-of-band) с IP.</p>
+        <input type="hidden" name="network_interfaces" id="network_interfaces_hidden" value="">
+        <div id="network_interfaces_container" class="mb-2"></div>
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="add_network_interface">+ Добавить интерфейс</button>
+    </div>
 
     <h5 class="mt-4 mb-2">Технические характеристики</h5>
     <p class="text-muted small">Заполняются для системного блока, неттопа, ноутбука, сервера.</p>
@@ -140,15 +160,19 @@
   var hasScreen = [{% for k in equipment_kind_has_screen %}"{{ k }}"{% if not loop.last %}, {% endif %}{% endfor %}];
   var hasTech = [{% for k in equipment_kind_has_tech %}"{{ k }}"{% if not loop.last %}, {% endif %}{% endfor %}];
   var needsRack = [{% for k in equipment_kind_needs_rack %}"{{ k }}"{% if not loop.last %}, {% endif %}{% endfor %}];
+  var hasOs = [{% for k in equipment_kind_has_os %}"{{ k }}"{% if not loop.last %}, {% endif %}{% endfor %}];
+  var osBlock = document.getElementById('os_block');
 
   function updateForm() {
     var kind = kindSelect.value;
     var isTech = hasTech.indexOf(kind) !== -1;
     var showScreen = hasScreen.indexOf(kind) !== -1;
     var showRack = needsRack.indexOf(kind) !== -1;
+    var showOs = hasOs.indexOf(kind) !== -1;
     techCommon.style.display = isTech ? 'flex' : 'none';
     techScreen.style.display = showScreen ? 'flex' : 'none';
     techRack.style.display = showRack ? 'flex' : 'none';
+    if (osBlock) osBlock.style.display = showOs ? 'block' : 'none';
     modelRequired.style.display = kind ? 'inline' : 'none';
     if (kind) modelInput.setAttribute('required', 'required');
     else modelInput.removeAttribute('required');
@@ -206,6 +230,55 @@
   }
 
   addBtn.addEventListener('click', function() { addRow({}); });
+  initialList.forEach(function(item) { addRow(item); });
+  if (initialList.length === 0) syncHidden();
+})();
+
+(function() {
+  var container = document.getElementById('network_interfaces_container');
+  var hidden = document.getElementById('network_interfaces_hidden');
+  var addBtn = document.getElementById('add_network_interface');
+  if (!container || !hidden || !addBtn) return;
+  var initialList = {{ network_interfaces_list | tojson }};
+
+  function syncHidden() {
+    var rows = container.querySelectorAll('.network-interface-row');
+    var arr = [];
+    rows.forEach(function(row) {
+      var labelInp = row.querySelector('.ni-label');
+      var typeSel = row.querySelector('.ni-type');
+      var ipInp = row.querySelector('.ni-ip');
+      if (labelInp && typeSel && ipInp) {
+        arr.push({
+          label: (labelInp.value || '').trim() || 'Интерфейс',
+          type: typeSel.value || 'network',
+          ip: (ipInp.value || '').trim()
+        });
+      }
+    });
+    hidden.value = JSON.stringify(arr);
+  }
+
+  function addRow(data) {
+    data = data || { label: 'Сетевая карта 1', type: 'network', ip: '' };
+    var row = document.createElement('div');
+    row.className = 'network-interface-row input-group input-group-sm mb-2';
+    row.innerHTML =
+      '<input type="text" class="form-control ni-label" placeholder="Название (напр. Сетевая карта 1, OOB)" value="' + (data.label || '').replace(/"/g, '&quot;') + '" style="max-width:200px;">' +
+      '<select class="form-select ni-type" style="max-width:140px;"><option value="network"' + (data.type === 'network' ? ' selected' : '') + '>Сетевая карта</option><option value="oob"' + (data.type === 'oob' ? ' selected' : '') + '>OOB</option></select>' +
+      '<input type="text" class="form-control ni-ip" placeholder="IP-адрес" value="' + (data.ip || '').replace(/"/g, '&quot;') + '">' +
+      '<button type="button" class="btn btn-outline-danger">×</button>';
+    row.querySelector('button').addEventListener('click', function() { row.remove(); syncHidden(); });
+    row.querySelectorAll('input, select').forEach(function(el) { el.addEventListener('input', syncHidden); el.addEventListener('change', syncHidden); });
+    container.appendChild(row);
+    syncHidden();
+  }
+
+  addBtn.addEventListener('click', function() {
+    var rows = container.querySelectorAll('.network-interface-row');
+    var n = rows.length + 1;
+    addRow({ label: 'Сетевая карта ' + n, type: 'network', ip: '' });
+  });
   initialList.forEach(function(item) { addRow(item); });
   if (initialList.length === 0) syncHidden();
 })();

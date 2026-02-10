@@ -8,7 +8,11 @@
     {% endif %}
 </div>
 <p class="card-subtitle">Фильтры по спискам; название можно ввести вручную.</p>
+{% if filters.inactive_by_activity %}
+<div class="alert alert-info py-2 mb-3 small">Показаны неактивные по последней активности (нет данных или более {{ inactive_days_threshold }} дн.). <a href="{{ request.url_for('assets_list') }}">Сбросить</a></div>
+{% endif %}
 <form method="get" class="row g-3 mb-4">
+    {% if filters.inactive_by_activity %}<input type="hidden" name="inactive_by_activity" value="1">{% endif %}
     <div class="col-auto">
         <input type="text" name="name" class="form-control" placeholder="Название" value="{{ filters.name or '' }}">
     </div>
