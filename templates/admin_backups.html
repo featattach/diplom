@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Бекапы — Система учёта оборудования{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="card-title">Бекапы</h1>
+    <div>
+        <form method="post" action="{{ request.url_for('admin_backup_create') }}" class="d-inline">
+            <button type="submit" class="btn btn-primary">Создать бекап</button>
+        </form>
+        <a href="{{ request.url_for('admin_users') }}" class="btn btn-outline-secondary">Пользователи</a>
+        <a href="{{ request.url_for('dashboard') }}" class="btn btn-outline-secondary">На дашборд</a>
+    </div>
+</div>
+<p class="text-muted">Бекап включает базу данных (app.db), папки аватарок и QR-кодов. Создайте бекап перед важными изменениями или для переноса данных. Восстановление заменит текущие данные выбранным бекапом.</p>
+
+{% if request.query_params.get('created') %}
+<div class="alert alert-success py-2">Бекап «{{ request.query_params.get('created') }}» создан.</div>
+{% endif %}
+{% if request.query_params.get('restored') %}
+<div class="alert alert-success py-2">Данные восстановлены. Рекомендуется обновить страницу или перезайти в систему.</div>
+{% endif %}
+{% if request.query_params.get('error') == 'confirm' %}
+<div class="alert alert-warning py-2">Восстановление отменено: отметьте подтверждение.</div>
+{% endif %}
+
+<div class="table-responsive">
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>Файл</th>
+                <th>Размер</th>
+                <th>Дата создания</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for b in backups %}
+            <tr>
+                <td><code>{{ b.name }}</code></td>
+                <td>{{ (b.size_bytes / 1024) | round(1) }} КБ</td>
+                <td>{{ b.mtime.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                <td>
+                    <a href="{{ request.url_for('admin_backup_download', filename=b.name) }}" class="btn btn-sm btn-outline-primary me-1">Скачать</a>
+                    <form method="post" action="{{ request.url_for('admin_backup_restore') }}" class="d-inline" onsubmit="return confirm('Восстановить данные из этого бекапа? Текущие данные будут заменены.');">
+                        <input type="hidden" name="filename" value="{{ b.name }}">
+                        <input type="hidden" name="confirm" value="yes">
+                        <button type="submit" class="btn btn-sm btn-outline-warning">Восстановить</button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="text-muted">Нет бекапов. Нажмите «Создать бекап».</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<p class="small text-muted">Бекапы сохраняются в папку data/backups/ на сервере. Для переноса на другой сервер скачайте нужный файл и поместите в data/backups/, затем используйте «Восстановить».</p>
+{% endblock %}

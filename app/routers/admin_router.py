@@ -1,18 +1,19 @@
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Request, Form, File, UploadFile
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Depends, Request, Form, File, UploadFile, HTTPException
+from fastapi.responses import RedirectResponse, FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from werkzeug.security import generate_password_hash
 
 from app.config import AVATAR_DIR, ALLOWED_AVATAR_EXTENSIONS, MAX_AVATAR_SIZE_MB
-from app.database import get_db
+from app.database import get_db, engine
 from app.models import User
 from app.models.user import UserRole
 from app.auth import require_role
 from app.templates_ctx import templates
+from app.services.backup import create_backup, list_backups, get_backup_path, restore_backup
 
 router = APIRouter(prefix="", tags=["admin"])
 
@@ -224,3 +225,64 @@ async def admin_user_edit(
 
     await db.flush()
     return RedirectResponse(url="/admin/users", status_code=302)
+
+
+# ——— Бекапы ———
+
+@router.get("/admin/backups", name="admin_backups")
+async def admin_backups_page(
+    request: Request,
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    backups = list_backups()
+    return templates.TemplateResponse(
+        "admin_backups.html",
+        {
+            "request": request,
+            "user": current_user,
+            "backups": backups,
+        },
+    )
+
+
+@router.post("/admin/backups/create", name="admin_backup_create")
+async def admin_backup_create(
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    name = create_backup()
+    return RedirectResponse(url=f"/admin/backups?created={name}", status_code=302)
+
+
+@router.get("/admin/backups/download/{filename}", name="admin_backup_download")
+async def admin_backup_download(
+    filename: str,
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    path = get_backup_path(filename)
+    if not path:
+        raise HTTPException(404, "Бекап не найден")
+    return FileResponse(
+        path,
+        filename=filename,
+        media_type="application/zip",
+    )
+
+
+@router.post("/admin/backups/restore", name="admin_backup_restore")
+async def admin_backup_restore(
+    request: Request,
+    current_user: User = Depends(require_role(UserRole.admin)),
+    filename: str = Form(...),
+    confirm: str = Form(None),
+):
+    if confirm != "yes":
+        return RedirectResponse(url="/admin/backups?error=confirm", status_code=302)
+    path = get_backup_path(filename)
+    if not path:
+        raise HTTPException(404, "Бекап не найден")
+    try:
+        await engine.dispose()
+        restore_backup(filename)
+    except Exception as e:
+        raise HTTPException(500, f"Ошибка восстановления: {e}")
+    return RedirectResponse(url="/admin/backups?restored=1", status_code=302)

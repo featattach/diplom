@@ -23,3 +23,8 @@ MAX_AVATAR_SIZE_MB = 5
 
 # Папка для сгенерированных QR-кодов оборудования
 QR_DIR = BASE_DIR / "data" / "qrcodes"
+
+# Папка для бекапов (БД + аватарки + QR)
+DATA_DIR = BASE_DIR / "data"
+BACKUP_DIR = BASE_DIR / "data" / "backups"
+DB_PATH = DATA_DIR / "app.db"

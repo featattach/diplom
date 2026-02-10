@@ -5,6 +5,7 @@
     <h1 class="card-title">Управление учётными записями</h1>
     <div>
         <a href="{{ request.url_for('admin_user_create') }}" class="btn btn-primary">+ Добавить пользователя</a>
+        <a href="{{ request.url_for('admin_backups') }}" class="btn btn-outline-secondary">Бекапы</a>
         <a href="{{ request.url_for('dashboard') }}" class="btn btn-outline-secondary">На дашборд</a>
     </div>
 </div>

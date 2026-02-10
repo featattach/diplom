@@ -31,7 +31,8 @@ def favicon():
 
 @app.on_event("startup")
 async def startup():
-    from app.config import BASE_DIR, AVATAR_DIR, QR_DIR
+    from app.config import BASE_DIR, AVATAR_DIR, QR_DIR, BACKUP_DIR
     (BASE_DIR / "data").mkdir(parents=True, exist_ok=True)
     AVATAR_DIR.mkdir(parents=True, exist_ok=True)
     QR_DIR.mkdir(parents=True, exist_ok=True)
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)

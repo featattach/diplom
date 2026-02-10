@@ -226,8 +226,8 @@ body {
 .dashboard-chart-card .card-body { min-height: 0; }
 .content-card .dashboard-chart-card .card-header { font-weight: 600; }
 
-/* Мобильная адаптация (смартфоны) */
-@media (max-width: 576px) {
+/* Мобильная/узкая адаптация (смартфоны, узкие окна) */
+@media (max-width: 768px) {
   .app-header {
     padding: 0.35rem 0;
   }
@@ -241,6 +241,10 @@ body {
     margin-top: 0.35rem;
     width: 100%;
     justify-content: center;
+    text-align: center;
+  }
+  .app-header .user-block > div {
+    font-size: 0.85rem;
   }
   .main-content {
     margin-top: 1rem;
