@@ -1,9 +1,16 @@
 # Система учёта оборудования — запуск в контейнере
-FROM python:3.14-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Зависимости
+# Системные библиотеки для сборки Pillow (qrcode, изображения)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    zlib1g-dev \
+    libjpeg-dev \
+    libpng-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Зависимости Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

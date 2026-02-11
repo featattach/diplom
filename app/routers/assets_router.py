@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta
 from urllib.parse import urlencode
-from fastapi import APIRouter, Depends, Request, Query, Form, HTTPException
+from fastapi import APIRouter, Depends, Request, Query, Form, File, UploadFile, HTTPException
 from fastapi.responses import RedirectResponse, StreamingResponse, FileResponse
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -14,6 +15,7 @@ from app.auth import require_user, require_role
 from app.models.user import User, UserRole
 from app.templates_ctx import templates
 from app.services.export_xlsx import export_assets_xlsx
+from app.services.import_xlsx import parse_import_xlsx, build_import_template_xlsx
 
 router = APIRouter(prefix="", tags=["assets"])
 
@@ -132,8 +134,9 @@ async def assets_list(
     equipment_kind: str | None = Query(None),
     location: str | None = Query(None),
     company_id: str | None = Query(None),
+    sort: str | None = Query("newest", description="Сортировка по дате добавления: newest / oldest"),
 ):
-    q = _assets_list_query(name, status, inactive_by_activity, equipment_kind, location, company_id)
+    q = _assets_list_query(name, status, inactive_by_activity, equipment_kind, location, company_id, sort)
     result = await db.execute(q)
     assets = list(result.scalars().all())
     if inactive_by_activity:
@@ -144,6 +147,7 @@ async def assets_list(
         select(Asset.location).where(Asset.location.isnot(None)).where(Asset.location != "").distinct().order_by(Asset.location)
     )
     location_choices = [r[0] for r in locations_result.all()]
+    sort_val = "newest" if sort not in ("newest", "oldest") else sort
     qp = {
         k: v
         for k, v in [
@@ -153,6 +157,7 @@ async def assets_list(
             ("equipment_kind", equipment_kind),
             ("location", location or ""),
             ("company_id", company_id or ""),
+            ("sort", sort_val if sort_val != "newest" else None),
         ]
         if v is not None and v != ""
     }
@@ -167,7 +172,7 @@ async def assets_list(
             "companies": companies,
             "location_choices": location_choices,
             "export_url": export_url,
-            "filters": {"name": name, "status": status, "inactive_by_activity": inactive_by_activity, "equipment_kind": equipment_kind, "location": location or "", "company_id": company_id or ""},
+            "filters": {"name": name, "status": status, "inactive_by_activity": inactive_by_activity, "equipment_kind": equipment_kind, "location": location or "", "company_id": company_id or "", "sort": sort_val},
             "status_choices": AssetStatus,
             "status_labels": STATUS_LABELS,
             "equipment_kind_choices": EQUIPMENT_KIND_CHOICES,
@@ -185,12 +190,17 @@ def _assets_list_query(
     equipment_kind: str | None,
     location: str | None,
     company_id: str | None,
+    sort: str = "newest",
 ):
     """Общая логика фильтрации списка активов (для списка и экспорта)."""
     status_filter = None
     if status and status.strip() and status.strip() in ("active", "inactive", "maintenance", "retired"):
         status_filter = AssetStatus(status.strip())
-    q = select(Asset).options(selectinload(Asset.company)).order_by(Asset.id)
+    q = select(Asset).options(selectinload(Asset.company))
+    if sort == "oldest":
+        q = q.order_by(Asset.created_at.asc(), Asset.id.asc())
+    else:
+        q = q.order_by(Asset.created_at.desc(), Asset.id.desc())
     if name:
         q = q.where(Asset.name.ilike(f"%{name}%"))
     if inactive_by_activity:
@@ -219,8 +229,10 @@ async def assets_export(
     equipment_kind: str | None = Query(None),
     location: str | None = Query(None),
     company_id: str | None = Query(None),
+    sort: str | None = Query("newest"),
 ):
-    q = _assets_list_query(name, status, inactive_by_activity, equipment_kind, location, company_id)
+    sort_val = "newest" if sort not in ("newest", "oldest") else sort
+    q = _assets_list_query(name, status, inactive_by_activity, equipment_kind, location, company_id, sort_val)
     result = await db.execute(q)
     assets = list(result.scalars().all())
     if inactive_by_activity:
@@ -230,6 +242,138 @@ async def assets_export(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=assets.xlsx"},
+    )
+
+
+@router.get("/assets/import", name="assets_import")
+async def assets_import_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
+    imported: int | None = Query(None),
+    errors: str | None = Query(None),
+):
+    return templates.TemplateResponse(
+        "assets_import.html",
+        {
+            "request": request,
+            "user": current_user,
+            "imported_count": imported,
+            "import_errors": errors or "",
+            "status_options": list(STATUS_LABELS.values()),
+            "equipment_kind_options": [c["label"] for c in EQUIPMENT_KIND_CHOICES],
+        },
+    )
+
+
+@router.get("/assets/import/template", name="assets_import_template")
+async def assets_import_template_download(
+    current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
+):
+    buf = build_import_template_xlsx()
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=import_oborudovanie_shablon.xlsx"},
+    )
+
+
+@router.post("/assets/import", name="assets_import_post")
+async def assets_import_upload(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
+    file: UploadFile = File(...),
+):
+    base = request.url_for("assets_import")
+    if not file.filename or not file.filename.lower().endswith(".xlsx"):
+        return RedirectResponse(
+            str(base.include_query_params(errors="Выберите файл Excel")),
+            status_code=302,
+        )
+    content = await file.read()
+    rows, parse_errors = parse_import_xlsx(content)
+    if parse_errors:
+        err_str = "; ".join(parse_errors[:5])
+        if len(parse_errors) > 5:
+            err_str += f" (всего {len(parse_errors)})"
+        return RedirectResponse(
+            str(base.include_query_params(errors=err_str)),
+            status_code=302,
+        )
+    if not rows:
+        return RedirectResponse(
+            str(base.include_query_params(errors="Нет строк для импорта (обязателен столбец Название)")),
+            status_code=302,
+        )
+    # Серийные номера уже в БД (для проверки дубликатов)
+    existing = await db.execute(select(Asset.serial_number).where(Asset.serial_number.isnot(None)).where(Asset.serial_number != ""))
+    existing_serials = {row[0] for row in existing.all()}
+    seen_serials_in_batch = set()
+    imported = 0
+    skip_messages = []
+    for idx, r in enumerate(rows, start=2):
+        serial = (r.get("serial_number") or "").strip()
+        if serial:
+            if serial in existing_serials:
+                skip_messages.append(f"Строка {idx}: серийный номер «{serial}» уже есть в базе")
+                continue
+            if serial in seen_serials_in_batch:
+                skip_messages.append(f"Строка {idx}: серийный номер «{serial}» повторяется в файле")
+                continue
+        try:
+            company_id = None
+            if r.get("company_name"):
+                comp = await db.execute(
+                    select(Company).where(Company.name.ilike(r["company_name"].strip()))
+                )
+                company = comp.scalar_one_or_none()
+                if company:
+                    company_id = company.id
+            data = {
+                "name": r["name"],
+                "model": r.get("model"),
+                "equipment_kind": r.get("equipment_kind"),
+                "serial_number": serial or None,
+                "location": r.get("location") or None,
+                "status": r["status"],
+                "asset_type": r.get("asset_type"),
+                "description": r.get("description"),
+                "company_id": company_id,
+                "current_user": r.get("current_user"),
+            }
+            asset = Asset(**data)
+            db.add(asset)
+            await db.flush()
+            ev = AssetEvent(
+                asset_id=asset.id,
+                event_type=AssetEventType.created,
+                description="Импорт из Excel",
+                created_by_id=current_user.id,
+            )
+            db.add(ev)
+            imported += 1
+            if serial:
+                existing_serials.add(serial)
+                seen_serials_in_batch.add(serial)
+        except IntegrityError as e:
+            await db.rollback()
+            msg = "Серийный номер уже существует в базе" if "serial_number" in str(e.orig) else str(e.orig)
+            return RedirectResponse(
+                str(base.include_query_params(errors=f"Строка {idx}: {msg}")),
+                status_code=302,
+            )
+    if skip_messages:
+        err_param = "; ".join(skip_messages[:5])
+        if len(skip_messages) > 5:
+            err_param += f" (пропущено {len(skip_messages)} строк)"
+        return RedirectResponse(
+            str(request.url_for("assets_import").include_query_params(imported=imported, errors=err_param)),
+            status_code=302,
+        )
+    return RedirectResponse(
+        str(request.url_for("assets_import").include_query_params(imported=imported)),
+        status_code=302,
     )
 
 

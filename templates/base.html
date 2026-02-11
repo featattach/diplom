@@ -9,7 +9,7 @@
     <link href="/static/style.css" rel="stylesheet">
 </head>
 <body>
-    <header class="app-header">
+    <header class="app-header {% if not user %}app-header-unauth{% endif %}">
         <div class="container">
             <h1 class="app-title">Система учёта оборудования</h1>
             {% if user %}

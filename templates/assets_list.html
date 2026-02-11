@@ -49,10 +49,19 @@
         </select>
     </div>
     <div class="col">
+        <select name="sort" class="form-select" title="По дате добавления">
+            <option value="newest" {% if filters.sort != 'oldest' %}selected{% endif %}>Сначала новые</option>
+            <option value="oldest" {% if filters.sort == 'oldest' %}selected{% endif %}>Сначала старые</option>
+        </select>
+    </div>
+    <div class="col">
         <button type="submit" class="btn btn-primary w-100 w-md-auto">Найти</button>
     </div>
     <div class="col">
         <a href="{{ export_url }}" class="btn btn-success w-100 w-md-auto">Экспорт в Excel</a>
+    </div>
+    <div class="col">
+        <a href="{{ request.url_for('assets_import') }}" class="btn btn-outline-secondary w-100 w-md-auto">Импорт из Excel</a>
     </div>
 </form>
 <!-- Десктопная таблица -->

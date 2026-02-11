@@ -24,10 +24,13 @@ body {
 }
 .app-header .container {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
   flex-wrap: wrap;
   position: relative;
+}
+.app-header-unauth .container {
+  justify-content: center;
 }
 .app-header .app-title {
   font-weight: 700;

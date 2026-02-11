@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Импорт из Excel — Система учёта оборудования{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="card-title">Импорт оборудования из Excel</h1>
+    <a href="{{ request.url_for('assets_list') }}" class="btn btn-outline-secondary">К списку</a>
+</div>
+
+<p class="card-subtitle mb-4">
+    Загрузите таблицу Excel: первая строка — заголовки столбцов. Можно взять старую инвентарку и переименовать столбцы в первой строке под шаблон, затем загрузить файл.
+</p>
+
+{% if imported_count is not none %}
+<div class="alert alert-success">Импортировано записей: {{ imported_count }}</div>
+{% endif %}
+{% if import_errors %}
+<div class="alert alert-danger">{{ import_errors }}</div>
+{% endif %}
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">Шаг 1. Скачайте шаблон или подготовьте свой файл</h5>
+        <p class="text-muted small mb-2">
+            В шаблоне перечислены нужные заголовки. Поддерживаются также варианты: «Имя», «Наименование», «Серийный», «Расположение», «Кабинет», «Организация», «Компания», «Пользователь», «Ответственный».
+        </p>
+        <div class="alert alert-warning py-2 mb-3 small">
+            <strong>Поля с выбором (указывайте точно):</strong>
+            <ul class="mb-0 mt-1">
+                <li><strong>Статус</strong> — только: {{ status_options | join(", ") }}.</li>
+                <li><strong>Тип техники</strong> — только: {{ equipment_kind_options | join(", ") }}. При опечатке значение не подставится (в карточке будет «—»).</li>
+                <li><strong>Серийный номер</strong> — не повторяйте в файле и с уже имеющимися в базе, иначе строка будет пропущена.</li>
+            </ul>
+        </div>
+        <a href="{{ request.url_for('assets_import_template') }}" class="btn btn-outline-primary">Скачать шаблон Excel</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <h5 class="card-title">Шаг 2. Загрузите заполненный файл</h5>
+        <p class="text-muted small mb-3">
+            Обязательный столбец: <strong>Название</strong>. Остальные по желанию: Модель, Тип техники, Серийный номер, Расположение, Статус, Категория, Описание, Организация, Пользователь (кто использует).
+        </p>
+        <form method="post" action="{{ request.url_for('assets_import_post') }}" enctype="multipart/form-data">
+            <div class="mb-3">
+                <label for="file" class="form-label">Файл .xlsx</label>
+                <input type="file" name="file" id="file" class="form-control" accept=".xlsx" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Импортировать</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
