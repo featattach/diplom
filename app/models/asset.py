@@ -1,5 +1,5 @@
-from datetime import datetime
-from sqlalchemy import String, DateTime, ForeignKey, Text, Enum, Integer
+from datetime import date, datetime
+from sqlalchemy import String, DateTime, Date, ForeignKey, Text, Enum, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import enum
 
@@ -73,6 +73,8 @@ class Asset(Base):
     network_interfaces: Mapped[str] = mapped_column(Text, nullable=True)
     # Кто сейчас использует (вводимое поле)
     current_user: Mapped[str] = mapped_column(String(256), nullable=True)
+    # Дата выпуска (для ПК, ноутбуков, серверов, неттопов — отчёт «Светофор»)
+    manufacture_date: Mapped[date] = mapped_column(Date, nullable=True)
 
     events: Mapped[list["AssetEvent"]] = relationship(
         "AssetEvent",

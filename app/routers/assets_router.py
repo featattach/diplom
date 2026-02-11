@@ -59,6 +59,8 @@ EQUIPMENT_KIND_NEEDS_RACK = ("server",)
 EQUIPMENT_KIND_HAS_TECH = ("desktop", "nettop", "laptop", "server")
 # Типы с выбором ОС (ПК, ноутбук, сервер, неттоп)
 EQUIPMENT_KIND_HAS_OS = ("desktop", "nettop", "laptop", "server")
+# Типы с полем «Дата выпуска» (для отчёта «Светофор»)
+EQUIPMENT_KIND_HAS_MANUFACTURE_DATE = ("desktop", "nettop", "laptop", "server")
 # Варианты ОС
 OS_OPTIONS = [
     {"value": "linux", "label": "Linux"},
@@ -92,6 +94,7 @@ ASSET_FIELD_LABELS = {
     "os": "ОС",
     "network_interfaces": "Сетевые интерфейсы",
     "current_user": "Пользователь (кто использует)",
+    "manufacture_date": "Дата выпуска",
 }
 # Типы доп. устройств (для блока «Доп. устройства»)
 EXTRA_COMPONENT_TYPES = [
@@ -546,6 +549,7 @@ async def asset_create_form(
             "equipment_kind_needs_rack": EQUIPMENT_KIND_NEEDS_RACK,
             "equipment_kind_has_tech": EQUIPMENT_KIND_HAS_TECH,
             "equipment_kind_has_os": EQUIPMENT_KIND_HAS_OS,
+            "equipment_kind_has_manufacture_date": EQUIPMENT_KIND_HAS_MANUFACTURE_DATE,
             "extra_component_types": EXTRA_COMPONENT_TYPES,
             "extra_components_list": [],
             "os_options": OS_OPTIONS,
@@ -560,9 +564,10 @@ def _parse_asset_form(
     screen_diagonal, screen_resolution, power_supply, monitor_diagonal,
     rack_units=None, extra_components_json=None, company_id=None,
     os=None, network_interfaces_json=None, current_user=None,
+    manufacture_date=None,
 ):
     import json
-    from datetime import datetime
+    from datetime import datetime, date
     data = {
         "name": name,
         "serial_number": serial_number or None,
@@ -587,7 +592,13 @@ def _parse_asset_form(
         "company_id": int(company_id) if company_id not in (None, "") else None,
         "os": (os or "").strip() or None,
         "current_user": (current_user or "").strip() or None,
+        "manufacture_date": None,
     }
+    if manufacture_date and str(manufacture_date).strip():
+        try:
+            data["manufacture_date"] = date.fromisoformat(str(manufacture_date).strip()[:10])
+        except (ValueError, TypeError):
+            pass
     if extra_components_json:
         try:
             data["extra_components"] = json.dumps(json.loads(extra_components_json), ensure_ascii=False)
@@ -758,6 +769,7 @@ async def asset_create(
     os: str | None = Form(None),
     network_interfaces: str | None = Form(None),
     assigned_user: str | None = Form(None),
+    manufacture_date: str | None = Form(None),
 ):
     data = _parse_asset_form(
         name, serial_number, asset_type, equipment_kind, model, location, status, description, last_seen_at,
@@ -765,6 +777,7 @@ async def asset_create(
         screen_diagonal, screen_resolution, power_supply, monitor_diagonal,
         rack_units=rack_units, extra_components_json=extra_components, company_id=company_id,
         os=os, network_interfaces_json=network_interfaces, current_user=assigned_user,
+        manufacture_date=manufacture_date,
     )
     asset = Asset(**data)
     db.add(asset)
@@ -808,6 +821,7 @@ async def asset_edit_form(
             "equipment_kind_needs_rack": EQUIPMENT_KIND_NEEDS_RACK,
             "equipment_kind_has_tech": EQUIPMENT_KIND_HAS_TECH,
             "equipment_kind_has_os": EQUIPMENT_KIND_HAS_OS,
+            "equipment_kind_has_manufacture_date": EQUIPMENT_KIND_HAS_MANUFACTURE_DATE,
             "extra_component_types": EXTRA_COMPONENT_TYPES,
             "extra_components_list": _parse_extra_components(asset),
             "os_options": OS_OPTIONS,
@@ -846,6 +860,7 @@ async def asset_edit(
     os: str | None = Form(None),
     network_interfaces: str | None = Form(None),
     assigned_user: str | None = Form(None),
+    manufacture_date: str | None = Form(None),
 ):
     result = await db.execute(select(Asset).where(Asset.id == asset_id))
     asset = result.scalar_one_or_none()
@@ -857,6 +872,7 @@ async def asset_edit(
         screen_diagonal, screen_resolution, power_supply, monitor_diagonal,
         rack_units=rack_units, extra_components_json=extra_components, company_id=company_id,
         os=os, network_interfaces_json=network_interfaces, current_user=assigned_user,
+        manufacture_date=manufacture_date,
     )
     changes = _build_asset_changes(asset, data)
     for key, value in data.items():

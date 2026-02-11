@@ -111,6 +111,10 @@
             <label class="form-label">Монитор (диагональ)</label>
             <input type="text" name="monitor_diagonal" class="form-control" value="{{ asset.monitor_diagonal if asset and asset.monitor_diagonal else '' }}" placeholder="например 24&quot;">
         </div>
+        <div class="col-md-6 mb-3" id="manufacture_date_block">
+            <label class="form-label">Дата выпуска</label>
+            <input type="date" name="manufacture_date" class="form-control" value="{{ asset.manufacture_date.isoformat() if asset and asset.manufacture_date else '' }}" placeholder="Для отчёта «Светофор»">
+        </div>
     </div>
     <div class="row" id="tech_screen" style="display:none;">
         <div class="col-md-6 mb-3">

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Отчёт «Светофор» — Система учёта оборудования{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h1 class="card-title mb-0">Отчёт «Светофор»</h1>
+    <div class="d-flex gap-2">
+        <a href="{{ request.url_for('reports_traffic_light_export') }}?company_id={{ company_id or '' }}&threshold_years={{ threshold_years }}" class="btn btn-success">Экспорт в Excel</a>
+        <a href="{{ request.url_for('reports') }}" class="btn btn-outline-secondary">К отчётам</a>
+    </div>
+</div>
+<p class="card-subtitle mb-4">Актуальность вычислительной техники (системные блоки, неттопы, ноутбуки, серверы) по дате выпуска. Сортировка: красный → жёлтый → зелёный → серый. Зелёный — менее 3 лет, жёлтый — от 3 до порога, красный — старше порога.</p>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" action="{{ request.url_for('reports_traffic_light') }}" class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label">Организация</label>
+                <select name="company_id" class="form-select">
+                    <option value="">— все —</option>
+                    {% for c in companies %}
+                    <option value="{{ c.id }}" {% if company_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Порог устаревания (лет)</label>
+                <input type="number" name="threshold_years" class="form-control" value="{{ threshold_years }}" min="1" max="20" step="1">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary">Показать</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Название</th>
+                        <th>Тип</th>
+                        <th>Организация</th>
+                        <th>Дата выпуска</th>
+                        <th>Возраст (лет)</th>
+                        <th>Статус</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in rows %}
+                    <tr class="table-{{ r.color }}">
+                        <td><a href="{{ request.url_for('asset_detail', asset_id=r.asset.id) }}">{{ r.asset.name }}</a></td>
+                        <td>{{ equipment_kind_labels.get(r.asset.equipment_kind, r.asset.equipment_kind or '—') }}</td>
+                        <td>{% if r.asset.company %}{{ r.asset.company.name }}{% else %}—{% endif %}</td>
+                        <td>{% if r.asset.manufacture_date %}{{ r.asset.manufacture_date.strftime('%d.%m.%Y') }}{% else %}—{% endif %}</td>
+                        <td>{% if r.age_years is not none %}{{ r.age_years }}{% else %}—{% endif %}</td>
+                        <td><span class="badge bg-{{ r.color }}">{% if r.color == 'success' %}до 3 лет{% elif r.color == 'warning' %}3–{{ threshold_years }} лет{% elif r.color == 'danger' %}старше {{ threshold_years }}{% else %}нет даты{% endif %}</span></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-muted text-center py-4">Нет техники по выбранным условиям. Укажите организацию или добавьте даты выпуска в карточках ПК/ноутбуков/серверов.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<p class="text-muted small mt-3">Техника без указанной даты выпуска отображается серым. Заполните поле «Дата выпуска» в карточке оборудования (для системного блока, неттопа, ноутбука, сервера).</p>
+{% endblock %}

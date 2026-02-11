@@ -27,5 +27,14 @@
             </div>
         </div>
     </div>
+    <div class="col-md-6 mb-3">
+        <div class="card h-100">
+            <div class="card-header bg-light">Светофор</div>
+            <div class="card-body">
+                <p>Актуальность ПК и серверов по дате выпуска: зелёный — до 3 лет, жёлтый — 3–5 лет, красный — старше порога.</p>
+                <a href="{{ request.url_for('reports_traffic_light') }}" class="btn btn-primary">Открыть отчёт</a>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
