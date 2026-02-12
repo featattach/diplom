@@ -13,7 +13,7 @@ from app.models import User
 from app.models.user import UserRole
 from app.auth import require_role
 from app.templates_ctx import templates
-from app.services.backup import create_backup, list_backups, get_backup_path, restore_backup
+from app.services.backup import create_backup, list_backups, get_backup_path, restore_backup, drop_database
 
 router = APIRouter(prefix="", tags=["admin"])
 
@@ -286,3 +286,19 @@ async def admin_backup_restore(
     except Exception as e:
         raise HTTPException(500, f"Ошибка восстановления: {e}")
     return RedirectResponse(url="/admin/backups?restored=1", status_code=302)
+
+
+@router.post("/admin/backups/drop", name="admin_backup_drop")
+async def admin_backup_drop(
+    current_user: User = Depends(require_role(UserRole.admin)),
+    confirm: str = Form(None),
+):
+    """Очистить базу: удалить все данные и создать пустую БД с одним админом (admin/admin)."""
+    if confirm != "yes":
+        return RedirectResponse(url="/admin/backups?error=drop_confirm", status_code=302)
+    try:
+        await engine.dispose()
+        drop_database()
+    except Exception as e:
+        raise HTTPException(500, f"Ошибка очистки базы: {e}")
+    return RedirectResponse(url="/login?dropped=1", status_code=302)

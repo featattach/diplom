@@ -8,6 +8,9 @@
             <div class="login-block-header-sub">Вход в систему</div>
         </div>
         <div class="login-block-body">
+            {% if request.query_params.get('dropped') %}
+            <div class="alert alert-info py-2">База данных очищена. Войдите как <strong>admin</strong> / <strong>admin</strong> и смените пароль в профиле.</div>
+            {% endif %}
             {% if error %}
             <div class="alert alert-danger">{{ error }}</div>
             {% endif %}

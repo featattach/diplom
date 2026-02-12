@@ -22,6 +22,9 @@
 {% if request.query_params.get('error') == 'confirm' %}
 <div class="alert alert-warning py-2">Восстановление отменено: отметьте подтверждение.</div>
 {% endif %}
+{% if request.query_params.get('error') == 'drop_confirm' %}
+<div class="alert alert-warning py-2">Очистка базы отменена: отметьте подтверждение.</div>
+{% endif %}
 
 <div class="table-responsive">
     <table class="table table-hover">
@@ -56,4 +59,15 @@
 </div>
 
 <p class="small text-muted">Бекапы сохраняются в папку data/backups/ на сервере. Для переноса на другой сервер скачайте нужный файл и поместите в data/backups/, затем используйте «Восстановить».</p>
+
+<div class="card border-danger mt-4">
+    <div class="card-body">
+        <h5 class="card-title text-danger">Очистить базу</h5>
+        <p class="card-text">Удалить все данные (пользователи, техника, организации, инвентаризация и т.д.), пересоздать пустую базу и очистить папки аватарок и QR-кодов. Будет создана одна учётная запись администратора: <strong>admin</strong> / <strong>admin</strong> — после входа смените пароль.</p>
+        <form method="post" action="{{ request.url_for('admin_backup_drop') }}" class="d-inline" onsubmit="return confirm('Вы уверены? Все данные будут безвозвратно удалены. Продолжить?');">
+            <input type="hidden" name="confirm" value="yes">
+            <button type="submit" class="btn btn-danger">Очистить базу (удалить все данные)</button>
+        </form>
+    </div>
+</div>
 {% endblock %}

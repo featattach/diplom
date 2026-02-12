@@ -1,6 +1,7 @@
 """
 Создание и восстановление бекапов: БД (app.db), папки avatars и qrcodes.
 Бекап — один zip-файл в data/backups/ с именем backup_YYYY-MM-DD_HH-MM-SS.zip.
+Очистка базы (drop): удаление всех данных и пересоздание пустой схемы с одним админом.
 """
 from __future__ import annotations
 
@@ -9,7 +10,14 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
-from app.config import BACKUP_DIR, DATA_DIR, DB_PATH, AVATAR_DIR, QR_DIR
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from werkzeug.security import generate_password_hash
+
+from app.config import BACKUP_DIR, DATA_DIR, DB_PATH, AVATAR_DIR, QR_DIR, SYNC_DATABASE_URL
+from app.database import Base
+from app.models import User, Asset, AssetEvent, Company, InventoryCampaign, InventoryItem
+from app.models.user import UserRole
 
 
 def _ensure_backup_dir() -> None:
@@ -96,3 +104,35 @@ def restore_backup(filename: str) -> None:
             for f in qrcodes_src.iterdir():
                 if f.is_file():
                     shutil.copy2(f, QR_DIR / f.name)
+
+
+def drop_database() -> None:
+    """
+    Аннулирует все данные: удаляет таблицы, создаёт пустую схему, создаёт учётную запись
+    администратора (admin/admin), очищает папки avatars и qrcodes.
+    Перед вызовом нужно закрыть соединения с БД (engine.dispose()).
+    """
+    engine = create_engine(SYNC_DATABASE_URL, echo=False)
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    Session = sessionmaker(bind=engine)
+    with Session() as session:
+        admin = User(
+            username="admin",
+            password_hash=generate_password_hash("admin"),
+            role=UserRole.admin,
+            is_active=True,
+        )
+        session.add(admin)
+        session.commit()
+    engine.dispose()
+
+    # Очистка файлов аватарок и QR-кодов
+    if AVATAR_DIR.exists():
+        for f in AVATAR_DIR.iterdir():
+            if f.is_file():
+                f.unlink()
+    if QR_DIR.exists():
+        for f in QR_DIR.iterdir():
+            if f.is_file():
+                f.unlink()

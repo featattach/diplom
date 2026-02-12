@@ -10,13 +10,20 @@ from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font, Alignment
 from openpyxl.utils import get_column_letter
 
+from app.config import INACTIVE_DAYS_THRESHOLD
 from app.database import get_db
 from app.models import Asset, Company, InventoryCampaign
 from app.models.asset import AssetStatus
 from app.auth import require_user
 from app.models.user import User
 from app.templates_ctx import templates
-from app.routers.assets_router import EQUIPMENT_KIND_LABELS
+from app.routers.assets_router import (
+    EQUIPMENT_KIND_LABELS,
+    EQUIPMENT_KIND_CHOICES,
+    _assets_list_query,
+    is_asset_inactive,
+)
+from app.services.export_xlsx import export_assets_xlsx
 
 router = APIRouter(prefix="", tags=["reports"])
 
@@ -81,6 +88,92 @@ async def reports(
             "status_labels": STATUS_LABELS,
             "total_campaigns": total_campaigns,
         },
+    )
+
+
+@router.get("/reports/equipment", name="reports_equipment")
+async def reports_equipment(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_user),
+    name: str | None = Query(None),
+    status: str | None = Query(None),
+    inactive_by_activity: bool = Query(False, description="Неактивные по последней активности"),
+    equipment_kind: str | None = Query(None),
+    location: str | None = Query(None),
+    company_id: str | None = Query(None),
+    sort: str | None = Query("newest"),
+):
+    sort_val = "newest" if sort not in ("newest", "oldest") else sort
+    q = _assets_list_query(name, status, inactive_by_activity, equipment_kind, location, company_id, sort_val)
+    result = await db.execute(q)
+    assets = list(result.scalars().all())
+    if inactive_by_activity:
+        assets = [a for a in assets if is_asset_inactive(a)]
+    companies_result = await db.execute(select(Company).order_by(Company.name))
+    companies = list(companies_result.scalars().all())
+    locations_result = await db.execute(
+        select(Asset.location).where(Asset.location.isnot(None)).where(Asset.location != "").distinct().order_by(Asset.location)
+    )
+    location_choices = [r[0] for r in locations_result.all()]
+    qp = {
+        k: v
+        for k, v in [
+            ("name", name),
+            ("status", status),
+            ("inactive_by_activity", "1" if inactive_by_activity else None),
+            ("equipment_kind", equipment_kind),
+            ("location", location or ""),
+            ("company_id", company_id or ""),
+            ("sort", sort_val if sort_val != "newest" else None),
+        ]
+        if v is not None and v != ""
+    }
+    base_export_url = request.url_for("reports_equipment_export")
+    export_url = str(base_export_url.include_query_params(**qp)) if qp else str(base_export_url)
+    return templates.TemplateResponse(
+        "reports_equipment.html",
+        {
+            "request": request,
+            "user": current_user,
+            "assets": assets,
+            "companies": companies,
+            "location_choices": location_choices,
+            "export_url": export_url,
+            "filters": {"name": name, "status": status, "inactive_by_activity": inactive_by_activity, "equipment_kind": equipment_kind, "location": location or "", "company_id": company_id or "", "sort": sort_val},
+            "status_enum": AssetStatus,
+            "status_labels": STATUS_LABELS,
+            "equipment_kind_choices": EQUIPMENT_KIND_CHOICES,
+            "equipment_kind_labels": EQUIPMENT_KIND_LABELS,
+            "is_inactive_fn": is_asset_inactive,
+            "inactive_days_threshold": INACTIVE_DAYS_THRESHOLD,
+        },
+    )
+
+
+@router.get("/reports/equipment/export.xlsx", name="reports_equipment_export")
+async def reports_equipment_export(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_user),
+    name: str | None = Query(None),
+    status: str | None = Query(None),
+    inactive_by_activity: bool = Query(False),
+    equipment_kind: str | None = Query(None),
+    location: str | None = Query(None),
+    company_id: str | None = Query(None),
+    sort: str | None = Query("newest"),
+):
+    sort_val = "newest" if sort not in ("newest", "oldest") else sort
+    q = _assets_list_query(name, status, inactive_by_activity, equipment_kind, location, company_id, sort_val)
+    result = await db.execute(q)
+    assets = list(result.scalars().all())
+    if inactive_by_activity:
+        assets = [a for a in assets if is_asset_inactive(a)]
+    buf = export_assets_xlsx(assets)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=equipment.xlsx"},
     )
 
 

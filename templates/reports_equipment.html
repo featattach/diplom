@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Отчёт «Оборудование» — Система учёта оборудования{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h1 class="card-title mb-0">Отчёт «Оборудование»</h1>
+    <div class="d-flex gap-2">
+        <a href="{{ export_url }}" class="btn btn-success">Экспорт в Excel</a>
+        <a href="{{ request.url_for('reports') }}" class="btn btn-outline-secondary">К отчётам</a>
+    </div>
+</div>
+<p class="card-subtitle mb-4">Экспорт списка оборудования в Excel с фильтрами по названию, статусу, типу техники, расположению и организации.</p>
+
+{% if filters.inactive_by_activity %}
+<div class="alert alert-info py-2 mb-3 small">Показаны неактивные по последней активности (более {{ inactive_days_threshold }} дн.). <a href="{{ request.url_for('reports_equipment') }}">Сбросить</a></div>
+{% endif %}
+
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" action="{{ request.url_for('reports_equipment') }}" class="row g-2 g-md-3 align-items-end">
+            {% if filters.inactive_by_activity %}<input type="hidden" name="inactive_by_activity" value="1">{% endif %}
+            <div class="col-12 col-md">
+                <label class="form-label">Название</label>
+                <input type="text" name="name" class="form-control" placeholder="Поиск по названию" value="{{ filters.name or '' }}">
+            </div>
+            <div class="col-12 col-md">
+                <label class="form-label">Статус</label>
+                <select name="status" class="form-select">
+                    <option value="">Все статусы</option>
+                    {% for s in status_enum %}
+                    <option value="{{ s.value }}" {% if filters.status == s.value %}selected{% endif %}>{{ status_labels.get(s.value, s.value) }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 col-md">
+                <label class="form-label">Тип техники</label>
+                <select name="equipment_kind" class="form-select">
+                    <option value="">Все типы</option>
+                    {% for k in equipment_kind_choices %}
+                    <option value="{{ k.value }}" {% if filters.equipment_kind == k.value %}selected{% endif %}>{{ k.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 col-md">
+                <label class="form-label">Расположение</label>
+                <select name="location" class="form-select">
+                    <option value="">Все</option>
+                    {% for loc in location_choices %}
+                    <option value="{{ loc }}" {% if filters.location == loc %}selected{% endif %}>{{ loc }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 col-md">
+                <label class="form-label">Организация</label>
+                <select name="company_id" class="form-select">
+                    <option value="">Все</option>
+                    {% for c in companies %}
+                    <option value="{{ c.id }}" {% if filters.company_id == c.id|string %}selected{% endif %}>{{ c.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 col-md">
+                <label class="form-label">Сортировка</label>
+                <select name="sort" class="form-select">
+                    <option value="newest" {% if filters.sort != 'oldest' %}selected{% endif %}>Сначала новые</option>
+                    <option value="oldest" {% if filters.sort == 'oldest' %}selected{% endif %}>Сначала старые</option>
+                </select>
+            </div>
+            <div class="col-12 col-md-auto">
+                <button type="submit" class="btn btn-primary">Показать</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Название</th>
+                        <th>Тип</th>
+                        <th>Организация</th>
+                        <th>Расположение</th>
+                        <th>Статус</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for asset in assets %}
+                    <tr class="{% if is_inactive_fn(asset) %}table-warning{% endif %}">
+                        <td><a href="{{ request.url_for('asset_detail', asset_id=asset.id) }}">{{ asset.name }}</a></td>
+                        <td>{{ equipment_kind_labels.get(asset.equipment_kind, asset.equipment_kind or '—') }}</td>
+                        <td>{% if asset.company %}{{ asset.company.name }}{% else %}—{% endif %}</td>
+                        <td>{{ asset.location or '—' }}</td>
+                        <td><span class="badge bg-secondary">{{ status_labels.get(asset.status.value, asset.status.value) }}</span></td>
+                        <td><a href="{{ request.url_for('asset_detail', asset_id=asset.id) }}" class="btn btn-sm btn-outline-primary">Открыть</a></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-muted text-center py-4">Нет записей по выбранным фильтрам.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<p class="text-muted small mt-3">Найдено записей: {{ assets|length }}. Экспорт в Excel использует те же фильтры.</p>
+{% endblock %}
