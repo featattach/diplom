@@ -20,7 +20,7 @@
         <select name="status" class="form-select">
             <option value="">Все статусы</option>
             {% for s in status_choices %}
-            <option value="{{ s.value }}" {% if filters.status == s %}selected{% endif %}>{{ status_labels.get(s.value, s.value) }}</option>
+            <option value="{{ s.value }}" {% if filters.status == s %}selected{% endif %}>{{ status_label(s) }}</option>
             {% endfor %}
         </select>
     </div>
@@ -87,11 +87,11 @@
                 <td>{{ asset.id }}</td>
                 <td><a href="{{ request.url_for('asset_detail', asset_id=asset.id) }}">{{ asset.name }}</a></td>
                 <td class="d-none d-sm-table-cell">{{ asset.model or '—' }}</td>
-                <td class="d-none d-md-table-cell">{{ equipment_kind_labels.get(asset.equipment_kind, asset.equipment_kind or '—') }}</td>
+                <td class="d-none d-md-table-cell">{{ equipment_kind_label(asset.equipment_kind) }}</td>
                 <td class="d-none d-md-table-cell">{% if asset.company %}<a href="{{ request.url_for('company_detail', company_id=asset.company.id) }}">{{ asset.company.name }}</a>{% else %}—{% endif %}</td>
                 <td class="d-none d-lg-table-cell">{{ asset.serial_number or '—' }}</td>
                 <td class="d-none d-sm-table-cell">{{ asset.location or '—' }}</td>
-                <td><span class="badge bg-secondary">{{ status_labels.get(asset.status.value, asset.status.value) }}</span></td>
+                <td><span class="badge bg-secondary">{{ status_label(asset.status) }}</span></td>
                 <td class="d-none d-sm-table-cell">{{ asset.last_seen_at.strftime('%Y-%m-%d %H:%M') if asset.last_seen_at else '—' }}</td>
                 <td><a href="{{ request.url_for('asset_detail', asset_id=asset.id) }}" class="btn btn-sm btn-outline-primary">Открыть</a></td>
             </tr>
@@ -112,7 +112,7 @@
                     <div class="small text-muted">ID {{ asset.id }}</div>
                     <a href="{{ request.url_for('asset_detail', asset_id=asset.id) }}" class="fw-semibold">{{ asset.name }}</a>
                 </div>
-                <span class="badge bg-secondary ms-2">{{ status_labels.get(asset.status.value, asset.status.value) }}</span>
+                <span class="badge bg-secondary ms-2">{{ status_label(asset.status) }}</span>
             </div>
             {% if asset.location %}
             <div class="small text-muted mb-1">Расположение: {{ asset.location }}</div>

@@ -14,12 +14,18 @@ SYNC_DATABASE_URL = DATABASE_URL.replace("+aiosqlite", "").replace("+asyncpg", "
 
 SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production-secret-key-32chars")
 SESSION_COOKIE_NAME = "session"
+CSRF_COOKIE_NAME = "csrf_token"
+# Для HTTPS: установить SECURE_COOKIES=true, чтобы cookie отправлялись только по HTTPS
+SECURE_COOKIES = os.getenv("SECURE_COOKIES", "false").lower() in ("true", "1", "yes")
 INACTIVE_DAYS_THRESHOLD = int(os.getenv("INACTIVE_DAYS_THRESHOLD", "30"))
 
 # Папка для загруженных аватарок (относительно BASE_DIR)
 AVATAR_DIR = BASE_DIR / "data" / "avatars"
 ALLOWED_AVATAR_EXTENSIONS = {"jpg", "jpeg", "png", "gif", "webp"}
 MAX_AVATAR_SIZE_MB = 5
+
+# Максимальный размер файла импорта оборудования (Excel), МБ
+MAX_IMPORT_SIZE_MB = int(os.getenv("MAX_IMPORT_SIZE_MB", "20"))
 
 # Папка для сгенерированных QR-кодов оборудования
 QR_DIR = BASE_DIR / "data" / "qrcodes"

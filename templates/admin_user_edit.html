@@ -23,9 +23,6 @@
         </form>
     </div>
     <small class="text-muted">До {{ max_size_mb }} МБ, форматы: {{ allowed_extensions }}</small>
-    {% if request.query_params.get('error') == 'no_file' %}<div class="text-danger small">Выберите файл.</div>{% endif %}
-    {% if request.query_params.get('error') == 'bad_type' %}<div class="text-danger small">Недопустимый формат файла.</div>{% endif %}
-    {% if request.query_params.get('error') == 'too_big' %}<div class="text-danger small">Файл слишком большой.</div>{% endif %}
 </div>
 
 <form method="post" action="{{ request.url_for('admin_user_edit_post', user_id=target_user.id) }}">

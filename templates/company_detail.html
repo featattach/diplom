@@ -49,7 +49,7 @@
             <tbody>
                 {% for status, cnt in summary.status_counts.items() %}
                 <tr>
-                    <td>{{ status_labels.get(status, status) }}</td>
+                    <td>{{ status_label(status) }}</td>
                     <td>{{ cnt }}</td>
                 </tr>
                 {% endfor %}

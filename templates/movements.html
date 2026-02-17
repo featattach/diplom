@@ -18,7 +18,7 @@
             {% for e in events %}
             <tr>
                 <td>{{ e.created_at.strftime('%Y-%m-%d %H:%M') if e.created_at else '—' }}</td>
-                <td><span class="badge bg-info">{{ event_type_labels.get(e.event_type.value, e.event_type.value) }}</span></td>
+                <td><span class="badge bg-info">{{ event_type_label(e.event_type) }}</span></td>
                 <td>{% if e.asset %}<a href="{{ request.url_for('asset_detail', asset_id=e.asset.id) }}">{{ e.asset.name }}</a>{% else %}—{% endif %}</td>
                 <td>{{ e.description or '—' }}</td>
                 <td>

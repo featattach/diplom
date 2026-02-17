@@ -1,132 +1,44 @@
-from datetime import datetime, timedelta
-from urllib.parse import urlencode
+"""
+CRUD техники: список, создание, редактирование, карточка актива, импорт и экспорт Excel.
+"""
 from fastapi import APIRouter, Depends, Request, Query, Form, File, UploadFile, HTTPException
-from fastapi.responses import RedirectResponse, StreamingResponse, FileResponse
-from sqlalchemy import select
+from fastapi.responses import RedirectResponse, StreamingResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from app.config import INACTIVE_DAYS_THRESHOLD, QR_DIR
+from app.config import INACTIVE_DAYS_THRESHOLD, MAX_IMPORT_SIZE_MB
+from app.repositories import asset_repo, reference_repo, inventory_repo
+from app.services.attachments_service import get_qr_path
+from app.utils.asset_helpers import is_asset_inactive
+from app.constants import (
+    ASSET_FIELD_LABELS,
+    EQUIPMENT_KIND_CHOICES,
+    EQUIPMENT_KIND_HAS_MANUFACTURE_DATE,
+    EQUIPMENT_KIND_HAS_OS,
+    EQUIPMENT_KIND_HAS_SCREEN,
+    EQUIPMENT_KIND_HAS_TECH,
+    EQUIPMENT_KIND_LABELS,
+    EQUIPMENT_KIND_NEEDS_RACK,
+    EVENT_TYPE_LABELS,
+    EVENT_TYPE_OPTIONS,
+    EXTRA_COMPONENT_TYPES,
+    OS_OPTIONS,
+    STATUS_LABELS,
+)
 from app.database import get_db
-from app.models import Asset, AssetEvent, Company, InventoryCampaign, InventoryItem
-from app.models.asset import AssetStatus, AssetEventType, EquipmentKind
+from app.models import Asset
+from app.models.asset import AssetStatus, EquipmentKind
 from app.auth import require_user, require_role
 from app.models.user import User, UserRole
 from app.templates_ctx import templates
+from app.services.assets_service import create_asset as service_create_asset, update_asset as service_update_asset
 from app.services.export_xlsx import export_assets_xlsx
 from app.services.import_xlsx import parse_import_xlsx, build_import_template_xlsx
 
 router = APIRouter(prefix="", tags=["assets"])
 
-STATUS_LABELS = {
-    "active": "Активно",
-    "inactive": "Неактивно",
-    "maintenance": "На обслуживании",
-    "retired": "Списано",
-}
-EVENT_TYPE_LABELS = {
-    "created": "Создание",
-    "updated": "Изменение",
-    "moved": "Перемещение",
-    "assigned": "Назначение",
-    "returned": "Возврат",
-    "maintenance": "Обслуживание",
-    "retired": "Списание",
-    "other": "Прочее",
-}
-EVENT_TYPE_OPTIONS = [{"value": k, "label": v} for k, v in EVENT_TYPE_LABELS.items()]
 
-EQUIPMENT_KIND_LABELS = {
-    "desktop": "Системный блок",
-    "nettop": "Неттоп",
-    "laptop": "Ноутбук",
-    "monitor": "Монитор",
-    "mfu": "МФУ",
-    "printer": "Принтер",
-    "scanner": "Сканер",
-    "switch": "Коммутатор",
-    "server": "Сервер",
-    "sip_phone": "SIP-телефон",
-    "monoblock": "Моноблок",  # устаревший тип, для старых записей
-}
-EQUIPMENT_KIND_CHOICES = [{"value": k, "label": v} for k, v in EQUIPMENT_KIND_LABELS.items()]
-# Типы с экраном (диагональ/разрешение) — только ноутбук и монитор; системный блок без диагонали
-EQUIPMENT_KIND_HAS_SCREEN = ("laptop", "monitor")
-# Типы с полем «Юниты (U)» — только сервер
-EQUIPMENT_KIND_NEEDS_RACK = ("server",)
-# Типы с общими тех. полями (процессор, ОЗУ, диски и т.д.)
-EQUIPMENT_KIND_HAS_TECH = ("desktop", "nettop", "laptop", "server")
-# Типы с выбором ОС (ПК, ноутбук, сервер, неттоп)
-EQUIPMENT_KIND_HAS_OS = ("desktop", "nettop", "laptop", "server")
-# Типы с полем «Дата выпуска» (для отчёта «Светофор»)
-EQUIPMENT_KIND_HAS_MANUFACTURE_DATE = ("desktop", "nettop", "laptop", "server")
-# Варианты ОС
-OS_OPTIONS = [
-    {"value": "linux", "label": "Linux"},
-    {"value": "windows_7", "label": "Windows 7"},
-    {"value": "windows_10", "label": "Windows 10"},
-    {"value": "windows_11", "label": "Windows 11"},
-]
-# Подписи полей для журнала «было → стало»
-ASSET_FIELD_LABELS = {
-    "name": "Название",
-    "serial_number": "Серийный номер",
-    "asset_type": "Категория",
-    "equipment_kind": "Тип техники",
-    "model": "Модель",
-    "location": "Расположение",
-    "status": "Статус",
-    "description": "Описание",
-    "last_seen_at": "Последняя активность",
-    "cpu": "Процессор",
-    "ram": "ОЗУ",
-    "disk1_type": "Тип диска",
-    "disk1_capacity": "Объём диска",
-    "network_card": "Сетевая карта",
-    "motherboard": "Материнская плата",
-    "screen_diagonal": "Диагональ экрана",
-    "screen_resolution": "Разрешение экрана",
-    "power_supply": "Блок питания",
-    "monitor_diagonal": "Монитор (диагональ)",
-    "rack_units": "Юниты (U)",
-    "company_id": "Организация",
-    "os": "ОС",
-    "network_interfaces": "Сетевые интерфейсы",
-    "current_user": "Пользователь (кто использует)",
-    "manufacture_date": "Дата выпуска",
-}
-# Типы доп. устройств (для блока «Доп. устройства»)
-EXTRA_COMPONENT_TYPES = [
-    {"value": "cpu", "label": "Процессор"},
-    {"value": "ram", "label": "ОЗУ"},
-    {"value": "disk", "label": "Диск"},
-    {"value": "network_card", "label": "Сетевая карта"},
-    {"value": "other", "label": "Прочее"},
-]
-
-
-def is_asset_inactive(asset: Asset) -> bool:
-    if not asset.last_seen_at:
-        return True
-    threshold = datetime.utcnow() - timedelta(days=INACTIVE_DAYS_THRESHOLD)
-    return asset.last_seen_at.replace(tzinfo=None) < threshold
-
-
-def _generate_qr_for_asset(asset_id: int, base_url: str) -> None:
-    """Генерирует PNG QR-кода с ссылкой на карточку актива и сохраняет в data/qrcodes."""
-    import qrcode
-    QR_DIR.mkdir(parents=True, exist_ok=True)
-    url = f"{base_url.rstrip('/')}/assets/{asset_id}"
-    qr = qrcode.QRCode(version=1, box_size=8, border=2)
-    qr.add_data(url)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
-    path = QR_DIR / f"{asset_id}.png"
-    img.save(path, "PNG")
-
-
-@router.get("/assets", name="assets_list")
+@router.get("/assets", name="assets_list", include_in_schema=False)
 async def assets_list(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -139,17 +51,14 @@ async def assets_list(
     company_id: str | None = Query(None),
     sort: str | None = Query("newest", description="Сортировка по дате добавления: newest / oldest"),
 ):
-    q = _assets_list_query(name, status, inactive_by_activity, equipment_kind, location, company_id, sort)
-    result = await db.execute(q)
-    assets = list(result.scalars().all())
+    assets = await asset_repo.get_assets_list(
+        db, name=name, status=status, inactive_by_activity=inactive_by_activity,
+        equipment_kind=equipment_kind, location=location, company_id=company_id, sort=sort,
+    )
     if inactive_by_activity:
         assets = [a for a in assets if is_asset_inactive(a)]
-    companies_result = await db.execute(select(Company).order_by(Company.name))
-    companies = list(companies_result.scalars().all())
-    locations_result = await db.execute(
-        select(Asset.location).where(Asset.location.isnot(None)).where(Asset.location != "").distinct().order_by(Asset.location)
-    )
-    location_choices = [r[0] for r in locations_result.all()]
+    companies = await reference_repo.get_companies_ordered(db)
+    location_choices = await asset_repo.get_distinct_locations(db)
     sort_val = "newest" if sort not in ("newest", "oldest") else sort
     qp = {
         k: v
@@ -186,43 +95,7 @@ async def assets_list(
     )
 
 
-def _assets_list_query(
-    name: str | None,
-    status: str | None,
-    inactive_by_activity: bool,
-    equipment_kind: str | None,
-    location: str | None,
-    company_id: str | None,
-    sort: str = "newest",
-):
-    """Общая логика фильтрации списка активов (для списка и экспорта)."""
-    status_filter = None
-    if status and status.strip() and status.strip() in ("active", "inactive", "maintenance", "retired"):
-        status_filter = AssetStatus(status.strip())
-    q = select(Asset).options(selectinload(Asset.company))
-    if sort == "oldest":
-        q = q.order_by(Asset.created_at.asc(), Asset.id.asc())
-    else:
-        q = q.order_by(Asset.created_at.desc(), Asset.id.desc())
-    if name:
-        q = q.where(Asset.name.ilike(f"%{name}%"))
-    if inactive_by_activity:
-        q = q.where(Asset.status != AssetStatus.retired)
-    elif status_filter is not None:
-        q = q.where(Asset.status == status_filter)
-    if equipment_kind:
-        q = q.where(Asset.equipment_kind == equipment_kind)
-    if location and location.strip():
-        q = q.where(Asset.location == location.strip())
-    if company_id and company_id.strip():
-        try:
-            q = q.where(Asset.company_id == int(company_id.strip()))
-        except ValueError:
-            pass
-    return q
-
-
-@router.get("/assets/export", name="assets_export")
+@router.get("/assets/export", name="assets_export", include_in_schema=False)
 async def assets_export(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_user),
@@ -235,9 +108,10 @@ async def assets_export(
     sort: str | None = Query("newest"),
 ):
     sort_val = "newest" if sort not in ("newest", "oldest") else sort
-    q = _assets_list_query(name, status, inactive_by_activity, equipment_kind, location, company_id, sort_val)
-    result = await db.execute(q)
-    assets = list(result.scalars().all())
+    assets = await asset_repo.get_assets_list(
+        db, name=name, status=status, inactive_by_activity=inactive_by_activity,
+        equipment_kind=equipment_kind, location=location, company_id=company_id, sort=sort_val,
+    )
     if inactive_by_activity:
         assets = [a for a in assets if is_asset_inactive(a)]
     buf = export_assets_xlsx(assets)
@@ -248,7 +122,7 @@ async def assets_export(
     )
 
 
-@router.get("/assets/import", name="assets_import")
+@router.get("/assets/import", name="assets_import", include_in_schema=False)
 async def assets_import_page(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -269,7 +143,7 @@ async def assets_import_page(
     )
 
 
-@router.get("/assets/import/template", name="assets_import_template")
+@router.get("/assets/import/template", name="assets_import_template", include_in_schema=False)
 async def assets_import_template_download(
     current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
 ):
@@ -281,7 +155,7 @@ async def assets_import_template_download(
     )
 
 
-@router.post("/assets/import", name="assets_import_post")
+@router.post("/assets/import", name="assets_import_post", include_in_schema=False)
 async def assets_import_upload(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -295,6 +169,11 @@ async def assets_import_upload(
             status_code=302,
         )
     content = await file.read()
+    if len(content) > MAX_IMPORT_SIZE_MB * 1024 * 1024:
+        return RedirectResponse(
+            str(base.include_query_params(errors=f"Файл слишком большой (макс. {MAX_IMPORT_SIZE_MB} МБ)")),
+            status_code=302,
+        )
     rows, parse_errors = parse_import_xlsx(content)
     if parse_errors:
         err_str = "; ".join(parse_errors[:5])
@@ -309,9 +188,7 @@ async def assets_import_upload(
             str(base.include_query_params(errors="Нет строк для импорта (обязателен столбец Название)")),
             status_code=302,
         )
-    # Серийные номера уже в БД (для проверки дубликатов)
-    existing = await db.execute(select(Asset.serial_number).where(Asset.serial_number.isnot(None)).where(Asset.serial_number != ""))
-    existing_serials = {row[0] for row in existing.all()}
+    existing_serials = await asset_repo.get_existing_serial_numbers(db)
     seen_serials_in_batch = set()
     imported = 0
     skip_messages = []
@@ -327,16 +204,20 @@ async def assets_import_upload(
         try:
             company_id = None
             if r.get("company_name"):
-                comp = await db.execute(
-                    select(Company).where(Company.name.ilike(r["company_name"].strip()))
-                )
-                company = comp.scalar_one_or_none()
+                company = await reference_repo.find_company_by_name(db, r["company_name"].strip())
                 if company:
                     company_id = company.id
+            equipment_kind_val = r.get("equipment_kind")
+            equipment_kind_enum = None
+            if equipment_kind_val:
+                try:
+                    equipment_kind_enum = EquipmentKind(equipment_kind_val)
+                except ValueError:
+                    pass
             data = {
                 "name": r["name"],
                 "model": r.get("model"),
-                "equipment_kind": r.get("equipment_kind"),
+                "equipment_kind": equipment_kind_enum,
                 "serial_number": serial or None,
                 "location": r.get("location") or None,
                 "status": r["status"],
@@ -345,16 +226,7 @@ async def assets_import_upload(
                 "company_id": company_id,
                 "current_user": r.get("current_user"),
             }
-            asset = Asset(**data)
-            db.add(asset)
-            await db.flush()
-            ev = AssetEvent(
-                asset_id=asset.id,
-                event_type=AssetEventType.created,
-                description="Импорт из Excel",
-                created_by_id=current_user.id,
-            )
-            db.add(ev)
+            await service_create_asset(db, data, current_user.id, event_description="Импорт из Excel")
             imported += 1
             if serial:
                 existing_serials.add(serial)
@@ -380,7 +252,7 @@ async def assets_import_upload(
     )
 
 
-@router.get("/assets/{asset_id:int}", name="asset_detail")
+@router.get("/assets/{asset_id:int}", name="asset_detail", include_in_schema=False)
 async def asset_detail(
     request: Request,
     asset_id: int,
@@ -388,12 +260,7 @@ async def asset_detail(
     current_user: User = Depends(require_user),
     inventory: int | None = Query(None, description="ID кампании инвентаризации для отметки «отсканировано»"),
 ):
-    result = await db.execute(
-        select(Asset)
-        .where(Asset.id == asset_id)
-        .options(selectinload(Asset.events), selectinload(Asset.company), selectinload(Asset.inventory_items))
-    )
-    asset = result.scalar_one_or_none()
+    asset = await asset_repo.get_asset_by_id_with_relations(db, asset_id)
     if not asset:
         raise HTTPException(404, "Asset not found")
     events = sorted(asset.events, key=lambda e: e.created_at or datetime.min, reverse=True)
@@ -407,24 +274,16 @@ async def asset_detail(
                 pass
     extra_components_list = _parse_extra_components(asset)
     component_type_labels = {t["value"]: t["label"] for t in EXTRA_COMPONENT_TYPES}
-    qr_path = QR_DIR / f"{asset.id}.png"
+    qr_path = get_qr_path(asset.id)
     network_interfaces_list = _parse_network_interfaces(asset)
     os_labels = {o["value"]: o["label"] for o in OS_OPTIONS}
 
     inventory_campaign = None
     inventory_item = None
     if inventory:
-        camp_result = await db.execute(
-            select(InventoryCampaign).where(InventoryCampaign.id == inventory)
-        )
-        inventory_campaign = camp_result.scalar_one_or_none()
+        inventory_campaign = await inventory_repo.get_campaign_by_id(db, inventory)
         if inventory_campaign:
-            item_result = await db.execute(
-                select(InventoryItem)
-                .where(InventoryItem.campaign_id == inventory)
-                .where(InventoryItem.asset_id == asset_id)
-            )
-            inventory_item = item_result.scalar_one_or_none()
+            inventory_item = await inventory_repo.get_inventory_item(db, inventory, asset_id)
 
     return templates.TemplateResponse(
         "asset_detail.html",
@@ -450,114 +309,6 @@ async def asset_detail(
     )
 
 
-@router.get("/assets/{asset_id:int}/qr-image", name="asset_qr_image")
-async def asset_qr_image(
-    asset_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_user),
-):
-    """Отдаёт PNG QR-кода для актива (если сгенерирован)."""
-    path = QR_DIR / f"{asset_id}.png"
-    if not path.is_file():
-        raise HTTPException(404, "QR-код не сгенерирован")
-    result = await db.execute(select(Asset).where(Asset.id == asset_id))
-    if not result.scalar_one_or_none():
-        raise HTTPException(404, "Asset not found")
-    return FileResponse(path, media_type="image/png")
-
-
-@router.post("/assets/{asset_id:int}/generate-qr", name="asset_generate_qr")
-async def asset_generate_qr(
-    request: Request,
-    asset_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_user),
-):
-    """Генерирует или перезаписывает QR-код для актива, редирект на карточку."""
-    result = await db.execute(select(Asset).where(Asset.id == asset_id))
-    asset = result.scalar_one_or_none()
-    if not asset:
-        raise HTTPException(404, "Asset not found")
-    base_url = str(request.base_url).rstrip("/")
-    _generate_qr_for_asset(asset_id, base_url)
-    return RedirectResponse(
-        request.url_for("asset_detail", asset_id=asset_id),
-        status_code=303,
-    )
-
-
-@router.post("/assets/{asset_id:int}/mark-inventory-found", name="asset_mark_inventory_found")
-async def asset_mark_inventory_found(
-    request: Request,
-    asset_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_user),
-    campaign_id: int = Form(...),
-):
-    """Отмечает оборудование как отсканированное (найденное) в рамках кампании инвентаризации."""
-    result = await db.execute(select(Asset).where(Asset.id == asset_id))
-    if not result.scalar_one_or_none():
-        raise HTTPException(404, "Asset not found")
-    camp_result = await db.execute(
-        select(InventoryCampaign).where(InventoryCampaign.id == campaign_id)
-    )
-    if not camp_result.scalar_one_or_none():
-        raise HTTPException(404, "Campaign not found")
-    item_result = await db.execute(
-        select(InventoryItem)
-        .where(InventoryItem.campaign_id == campaign_id)
-        .where(InventoryItem.asset_id == asset_id)
-    )
-    item = item_result.scalar_one_or_none()
-    if not item:
-        item = InventoryItem(
-            campaign_id=campaign_id,
-            asset_id=asset_id,
-            found=True,
-            found_at=datetime.utcnow(),
-        )
-        db.add(item)
-    else:
-        item.found = True
-        item.found_at = datetime.utcnow()
-    await db.flush()
-    return RedirectResponse(
-        request.url_for("asset_detail", asset_id=asset_id) + f"?inventory={campaign_id}&marked=1",
-        status_code=303,
-    )
-
-
-@router.get("/assets/create", name="asset_create")
-async def asset_create_form(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
-):
-    companies_result = await db.execute(select(Company).order_by(Company.name))
-    companies = list(companies_result.scalars().all())
-    return templates.TemplateResponse(
-        "asset_form.html",
-        {
-            "request": request,
-            "user": current_user,
-            "asset": None,
-            "companies": companies,
-            "status_choices": AssetStatus,
-            "status_labels": STATUS_LABELS,
-            "equipment_kind_choices": EQUIPMENT_KIND_CHOICES,
-            "equipment_kind_has_screen": EQUIPMENT_KIND_HAS_SCREEN,
-            "equipment_kind_needs_rack": EQUIPMENT_KIND_NEEDS_RACK,
-            "equipment_kind_has_tech": EQUIPMENT_KIND_HAS_TECH,
-            "equipment_kind_has_os": EQUIPMENT_KIND_HAS_OS,
-            "equipment_kind_has_manufacture_date": EQUIPMENT_KIND_HAS_MANUFACTURE_DATE,
-            "extra_component_types": EXTRA_COMPONENT_TYPES,
-            "extra_components_list": [],
-            "os_options": OS_OPTIONS,
-            "network_interfaces_list": [],
-        },
-    )
-
-
 def _parse_asset_form(
     name, serial_number, asset_type, equipment_kind, model, location, status, description, last_seen_at,
     cpu, ram, disk1_type, disk1_capacity, network_card, motherboard,
@@ -567,12 +318,18 @@ def _parse_asset_form(
     manufacture_date=None,
 ):
     import json
-    from datetime import datetime, date
+    from datetime import date
+    equipment_kind_enum = None
+    if equipment_kind and equipment_kind.strip():
+        try:
+            equipment_kind_enum = EquipmentKind(equipment_kind.strip())
+        except ValueError:
+            pass
     data = {
         "name": name,
         "serial_number": serial_number or None,
         "asset_type": asset_type or None,
-        "equipment_kind": equipment_kind or None,
+        "equipment_kind": equipment_kind_enum,
         "model": model or None,
         "location": location or None,
         "status": status,
@@ -627,10 +384,9 @@ def _parse_extra_components(asset):
 
 
 def _format_event_value(val) -> str:
-    """Форматирует значение для отображения в журнале «было → стало»."""
     if val is None:
         return "—"
-    if hasattr(val, "value"):  # enum
+    if hasattr(val, "value"):
         return str(val.value)
     if hasattr(val, "isoformat"):
         return val.isoformat()[:19].replace("T", " ")
@@ -638,7 +394,6 @@ def _format_event_value(val) -> str:
 
 
 def _format_network_interfaces_for_changes(json_str) -> str:
-    """Читаемое представление сетевых интерфейсов без сырого JSON (label, type, ip)."""
     import json
     if not json_str:
         return "—"
@@ -661,7 +416,6 @@ def _format_network_interfaces_for_changes(json_str) -> str:
 
 
 def _format_extra_components_for_changes(json_str) -> str:
-    """Читаемое представление доп. устройств без сырого JSON."""
     import json
     if not json_str:
         return "—"
@@ -682,7 +436,6 @@ def _format_extra_components_for_changes(json_str) -> str:
 
 
 def _build_asset_changes(asset: Asset, data: dict) -> list[dict]:
-    """Сравнивает текущее состояние актива с новыми данными, возвращает список изменений."""
     import json
     changes = []
     for key, new_val in data.items():
@@ -691,22 +444,14 @@ def _build_asset_changes(asset: Asset, data: dict) -> list[dict]:
             old_str = _format_extra_components_for_changes(old_raw)
             new_str = _format_extra_components_for_changes(new_val)
             if old_str != new_str:
-                changes.append({
-                    "field_label": ASSET_FIELD_LABELS.get(key, key),
-                    "old": old_str,
-                    "new": new_str,
-                })
+                changes.append({"field_label": ASSET_FIELD_LABELS.get(key, key), "old": old_str, "new": new_str})
             continue
         if key == "network_interfaces":
             old_raw = getattr(asset, key, None)
             old_str = _format_network_interfaces_for_changes(old_raw)
             new_str = _format_network_interfaces_for_changes(new_val)
             if old_str != new_str:
-                changes.append({
-                    "field_label": ASSET_FIELD_LABELS.get(key, key),
-                    "old": old_str,
-                    "new": new_str,
-                })
+                changes.append({"field_label": ASSET_FIELD_LABELS.get(key, key), "old": old_str, "new": new_str})
             continue
         old_val = getattr(asset, key, None)
         if old_val == new_val:
@@ -715,16 +460,11 @@ def _build_asset_changes(asset: Asset, data: dict) -> list[dict]:
         new_str = _format_event_value(new_val)
         if old_str == new_str:
             continue
-        changes.append({
-            "field_label": ASSET_FIELD_LABELS.get(key, key),
-            "old": old_str,
-            "new": new_str,
-        })
+        changes.append({"field_label": ASSET_FIELD_LABELS.get(key, key), "old": old_str, "new": new_str})
     return changes
 
 
 def _parse_network_interfaces(asset) -> list[dict]:
-    """Возвращает список {label, type, ip} из asset.network_interfaces JSON."""
     import json
     if not getattr(asset, "network_interfaces", None):
         return []
@@ -740,7 +480,37 @@ def _parse_network_interfaces(asset) -> list[dict]:
         return []
 
 
-@router.post("/assets/create", name="asset_create_post")
+@router.get("/assets/create", name="asset_create", include_in_schema=False)
+async def asset_create_form(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
+):
+    companies = await reference_repo.get_companies_ordered(db)
+    return templates.TemplateResponse(
+        "asset_form.html",
+        {
+            "request": request,
+            "user": current_user,
+            "asset": None,
+            "companies": companies,
+            "status_choices": AssetStatus,
+            "status_labels": STATUS_LABELS,
+            "equipment_kind_choices": EQUIPMENT_KIND_CHOICES,
+            "equipment_kind_has_screen": EQUIPMENT_KIND_HAS_SCREEN,
+            "equipment_kind_needs_rack": EQUIPMENT_KIND_NEEDS_RACK,
+            "equipment_kind_has_tech": EQUIPMENT_KIND_HAS_TECH,
+            "equipment_kind_has_os": EQUIPMENT_KIND_HAS_OS,
+            "equipment_kind_has_manufacture_date": EQUIPMENT_KIND_HAS_MANUFACTURE_DATE,
+            "extra_component_types": EXTRA_COMPONENT_TYPES,
+            "extra_components_list": [],
+            "os_options": OS_OPTIONS,
+            "network_interfaces_list": [],
+        },
+    )
+
+
+@router.post("/assets/create", name="asset_create_post", include_in_schema=False)
 async def asset_create(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
@@ -779,34 +549,21 @@ async def asset_create(
         os=os, network_interfaces_json=network_interfaces, current_user=assigned_user,
         manufacture_date=manufacture_date,
     )
-    asset = Asset(**data)
-    db.add(asset)
-    await db.flush()
-    event = AssetEvent(
-        asset_id=asset.id,
-        event_type=AssetEventType.created,
-        description="Asset created",
-        created_by_id=current_user.id,
-    )
-    db.add(event)
-    await db.flush()
+    asset = await service_create_asset(db, data, current_user.id)
     return RedirectResponse(url=f"/assets/{asset.id}", status_code=302)
 
 
-@router.get("/assets/{asset_id:int}/edit", name="asset_edit")
+@router.get("/assets/{asset_id:int}/edit", name="asset_edit", include_in_schema=False)
 async def asset_edit_form(
     request: Request,
     asset_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
 ):
-    result = await db.execute(select(Asset).where(Asset.id == asset_id))
-    asset = result.scalar_one_or_none()
+    asset = await asset_repo.get_asset_by_id(db, asset_id)
     if not asset:
-        from fastapi import HTTPException
         raise HTTPException(404, "Asset not found")
-    companies_result = await db.execute(select(Company).order_by(Company.name))
-    companies = list(companies_result.scalars().all())
+    companies = await reference_repo.get_companies_ordered(db)
     return templates.TemplateResponse(
         "asset_form.html",
         {
@@ -830,7 +587,7 @@ async def asset_edit_form(
     )
 
 
-@router.post("/assets/{asset_id:int}/edit", name="asset_edit_post")
+@router.post("/assets/{asset_id:int}/edit", name="asset_edit_post", include_in_schema=False)
 async def asset_edit(
     asset_id: int,
     db: AsyncSession = Depends(get_db),
@@ -862,8 +619,7 @@ async def asset_edit(
     assigned_user: str | None = Form(None),
     manufacture_date: str | None = Form(None),
 ):
-    result = await db.execute(select(Asset).where(Asset.id == asset_id))
-    asset = result.scalar_one_or_none()
+    asset = await asset_repo.get_asset_by_id(db, asset_id)
     if not asset:
         raise HTTPException(404, "Asset not found")
     data = _parse_asset_form(
@@ -875,59 +631,8 @@ async def asset_edit(
         manufacture_date=manufacture_date,
     )
     changes = _build_asset_changes(asset, data)
-    for key, value in data.items():
-        setattr(asset, key, value)
-    await db.flush()
-    import json
-    event = AssetEvent(
-        asset_id=asset_id,
-        event_type=AssetEventType.updated,
-        description="Изменение карточки" if changes else "Asset updated",
-        created_by_id=current_user.id,
-        changes_json=json.dumps(changes, ensure_ascii=False) if changes else None,
-    )
-    db.add(event)
-    await db.flush()
+    try:
+        await service_update_asset(db, asset, data, changes, current_user.id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     return RedirectResponse(url=f"/assets/{asset_id}", status_code=302)
-
-
-@router.post("/assets/{asset_id:int}/event", name="asset_add_event")
-async def asset_add_event(
-    asset_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
-    event_type: AssetEventType = Form(...),
-    description: str | None = Form(None),
-):
-    result = await db.execute(select(Asset).where(Asset.id == asset_id))
-    asset = result.scalar_one_or_none()
-    if not asset:
-        raise HTTPException(404, "Asset not found")
-    event = AssetEvent(
-        asset_id=asset_id,
-        event_type=event_type,
-        description=description or "",
-        created_by_id=current_user.id,
-    )
-    db.add(event)
-    await db.flush()
-    return RedirectResponse(url=f"/assets/{asset_id}", status_code=302)
-
-
-@router.get("/scan", name="scan_qr")
-async def scan_qr_page(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_user),
-):
-    """Страница сканирования QR-кода камерой (для перехода на карточку и отметки «отсканировано»)."""
-    campaigns_result = await db.execute(
-        select(InventoryCampaign)
-        .where(InventoryCampaign.finished_at.is_(None))
-        .order_by(InventoryCampaign.started_at.desc())
-    )
-    campaigns = list(campaigns_result.scalars().all())
-    return templates.TemplateResponse(
-        "scan.html",
-        {"request": request, "user": current_user, "campaigns": campaigns},
-    )

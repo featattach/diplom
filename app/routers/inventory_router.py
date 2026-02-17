@@ -1,47 +1,57 @@
-from fastapi import APIRouter, Depends, Request, Form
+from datetime import datetime
+from fastapi import APIRouter, Depends, Request, Form, HTTPException, Query
 from fastapi.responses import RedirectResponse, StreamingResponse
-from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import InventoryCampaign, InventoryItem, Asset, Company
 from app.auth import require_user, require_role
 from app.models.user import User, UserRole
 from app.templates_ctx import templates
+from app.repositories import asset_repo, reference_repo, inventory_repo
 from app.services.export_xlsx import export_inventory_campaign_xlsx
+from app.services.inventory_service import (
+    mark_asset_found,
+    create_campaign,
+    update_campaign,
+    add_campaign_item,
+    mark_item_found_by_id,
+    generate_campaign_scope,
+    finish_campaign,
+)
 
 router = APIRouter(prefix="", tags=["inventory"])
 
 
-@router.get("/inventory", name="inventory_list")
+@router.post("/assets/{asset_id:int}/mark-inventory-found", name="asset_mark_inventory_found", include_in_schema=False)
+async def asset_mark_inventory_found(
+    request: Request,
+    asset_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_user),
+    campaign_id: int = Form(...),
+):
+    """Отмечает оборудование как отсканированное (найденное) в рамках кампании инвентаризации."""
+    if not await asset_repo.get_asset_by_id(db, asset_id):
+        raise HTTPException(404, "Asset not found")
+    if not await inventory_repo.get_campaign_by_id(db, campaign_id):
+        raise HTTPException(404, "Campaign not found")
+    await mark_asset_found(db, campaign_id, asset_id)
+    return RedirectResponse(
+        request.url_for("asset_detail", asset_id=asset_id) + f"?inventory={campaign_id}&marked=1",
+        status_code=303,
+    )
+
+
+@router.get("/inventory", name="inventory_list", include_in_schema=False)
 async def inventory_list(
     request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_user),
 ):
-    from sqlalchemy.orm import selectinload
-    companies_result = await db.execute(
-        select(Company)
-        .order_by(Company.name)
-        .options(selectinload(Company.campaigns))
-    )
-    companies = list(companies_result.scalars().all())
-    company_asset_counts = {}
-    if companies:
-        counts_result = await db.execute(
-            select(Asset.company_id, func.count(Asset.id))
-            .where(Asset.company_id.isnot(None))
-            .group_by(Asset.company_id)
-        )
-        company_asset_counts = dict(counts_result.all())
-    campaigns_without_company_result = await db.execute(
-        select(InventoryCampaign)
-        .where(InventoryCampaign.company_id.is_(None))
-        .order_by(InventoryCampaign.started_at.desc())
-    )
-    campaigns_without_company = list(campaigns_without_company_result.scalars().all())
     from datetime import datetime as dt
+    companies = await reference_repo.get_companies_with_campaigns(db)
+    company_asset_counts = await inventory_repo.get_asset_counts_by_company(db)
+    campaigns_without_company = await inventory_repo.get_campaigns_without_company(db)
     company_latest_campaign = {}
     for c in companies:
         if c.campaigns:
@@ -62,24 +72,19 @@ async def inventory_list(
     )
 
 
-@router.get("/inventory/{campaign_id:int}", name="inventory_detail")
+@router.get("/inventory/{campaign_id:int}", name="inventory_detail", include_in_schema=False)
 async def inventory_detail(
     request: Request,
     campaign_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_user),
+    scope_generated: str | None = Query(None),
+    finished: str | None = Query(None),
 ):
-    result = await db.execute(
-        select(InventoryCampaign)
-        .where(InventoryCampaign.id == campaign_id)
-        .options(selectinload(InventoryCampaign.items).selectinload(InventoryItem.asset))
-    )
-    campaign = result.scalar_one_or_none()
+    campaign = await inventory_repo.get_campaign_with_items(db, campaign_id)
     if not campaign:
-        from fastapi import HTTPException
         raise HTTPException(404, "Campaign not found")
-    assets_result = await db.execute(select(Asset).order_by(Asset.name))
-    assets = list(assets_result.scalars().all())
+    assets = await inventory_repo.get_all_assets_ordered(db)
     return templates.TemplateResponse(
         "inventory_detail.html",
         {
@@ -87,20 +92,57 @@ async def inventory_detail(
             "user": current_user,
             "campaign": campaign,
             "assets": assets,
+            "scope_generated": scope_generated,
+            "finished": finished,
         },
     )
 
 
-@router.get("/inventory/create", name="inventory_create")
+@router.post("/inventory/{campaign_id:int}/generate-scope", name="inventory_generate_scope", include_in_schema=False)
+async def inventory_generate_scope(
+    request: Request,
+    campaign_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
+):
+    """Формирует объём проверки: снимок активов по организации кампании (или всех). Заменяет текущий список пунктов."""
+    campaign = await inventory_repo.get_campaign_by_id(db, campaign_id)
+    if not campaign:
+        raise HTTPException(404, "Campaign not found")
+    try:
+        count = await generate_campaign_scope(db, campaign_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return RedirectResponse(
+        request.url_for("inventory_detail", campaign_id=campaign_id) + f"?scope_generated={count}",
+        status_code=303,
+    )
+
+
+@router.post("/inventory/{campaign_id:int}/finish", name="inventory_finish", include_in_schema=False)
+async def inventory_finish(
+    request: Request,
+    campaign_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
+):
+    """Завершает кампанию (устанавливает дату окончания)."""
+    if not await finish_campaign(db, campaign_id):
+        raise HTTPException(404, "Campaign not found")
+    return RedirectResponse(
+        request.url_for("inventory_detail", campaign_id=campaign_id) + "?finished=1",
+        status_code=303,
+    )
+
+
+@router.get("/inventory/create", name="inventory_create", include_in_schema=False)
 async def inventory_create_form(
     request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
 ):
-    result = await db.execute(select(Asset).order_by(Asset.name))
-    assets = list(result.scalars().all())
-    companies_result = await db.execute(select(Company).order_by(Company.name))
-    companies = list(companies_result.scalars().all())
+    assets = await inventory_repo.get_all_assets_ordered(db)
+    companies = await reference_repo.get_companies_ordered(db)
     return templates.TemplateResponse(
         "inventory_form.html",
         {
@@ -113,22 +155,18 @@ async def inventory_create_form(
     )
 
 
-@router.get("/inventory/{campaign_id:int}/edit", name="inventory_campaign_edit")
+@router.get("/inventory/{campaign_id:int}/edit", name="inventory_campaign_edit", include_in_schema=False)
 async def inventory_campaign_edit_form(
     request: Request,
     campaign_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
 ):
-    result = await db.execute(select(InventoryCampaign).where(InventoryCampaign.id == campaign_id))
-    campaign = result.scalar_one_or_none()
+    campaign = await inventory_repo.get_campaign_by_id(db, campaign_id)
     if not campaign:
-        from fastapi import HTTPException
         raise HTTPException(404, "Campaign not found")
-    assets_result = await db.execute(select(Asset).order_by(Asset.name))
-    assets = list(assets_result.scalars().all())
-    companies_result = await db.execute(select(Company).order_by(Company.name))
-    companies = list(companies_result.scalars().all())
+    assets = await inventory_repo.get_all_assets_ordered(db)
+    companies = await reference_repo.get_companies_ordered(db)
     return templates.TemplateResponse(
         "inventory_form.html",
         {
@@ -141,7 +179,7 @@ async def inventory_campaign_edit_form(
     )
 
 
-@router.post("/inventory/{campaign_id:int}/edit", name="inventory_edit_post")
+@router.post("/inventory/{campaign_id:int}/edit", name="inventory_edit_post", include_in_schema=False)
 async def inventory_campaign_edit(
     campaign_id: int,
     db: AsyncSession = Depends(get_db),
@@ -153,33 +191,33 @@ async def inventory_campaign_edit(
     finished_at: str | None = Form(None),
 ):
     from datetime import datetime
-    result = await db.execute(select(InventoryCampaign).where(InventoryCampaign.id == campaign_id))
-    campaign = result.scalar_one_or_none()
+    campaign = await inventory_repo.get_campaign_by_id(db, campaign_id)
     if not campaign:
-        from fastapi import HTTPException
         raise HTTPException(404, "Campaign not found")
-    campaign.name = name.strip()
-    campaign.description = description.strip() if description else None
-    campaign.company_id = int(company_id) if company_id and company_id.strip() else None
+    started_at_parsed = None
     if started_at and started_at.strip():
         try:
-            campaign.started_at = datetime.fromisoformat(started_at.strip().replace("Z", "+00:00"))
+            started_at_parsed = datetime.fromisoformat(started_at.strip().replace("Z", "+00:00"))
         except (ValueError, TypeError):
             pass
-    else:
-        campaign.started_at = None
+    finished_at_parsed = None
     if finished_at and finished_at.strip():
         try:
-            campaign.finished_at = datetime.fromisoformat(finished_at.strip().replace("Z", "+00:00"))
+            finished_at_parsed = datetime.fromisoformat(finished_at.strip().replace("Z", "+00:00"))
         except (ValueError, TypeError):
             pass
-    else:
-        campaign.finished_at = None
-    await db.flush()
+    await update_campaign(
+        db, campaign,
+        name=name.strip(),
+        description=description,
+        company_id=int(company_id) if company_id and company_id.strip() else None,
+        started_at=started_at_parsed,
+        finished_at=finished_at_parsed,
+    )
     return RedirectResponse(url=f"/inventory/{campaign_id}", status_code=302)
 
 
-@router.post("/inventory/create", name="inventory_create_post")
+@router.post("/inventory/create", name="inventory_create_post", include_in_schema=False)
 async def inventory_create(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
@@ -187,17 +225,16 @@ async def inventory_create(
     description: str | None = Form(None),
     company_id: str | None = Form(None),
 ):
-    campaign = InventoryCampaign(
+    campaign = await create_campaign(
+        db,
         name=name,
-        description=description if description else None,
+        description=description,
         company_id=int(company_id) if company_id and company_id.strip() else None,
     )
-    db.add(campaign)
-    await db.flush()
     return RedirectResponse(url=f"/inventory/{campaign.id}", status_code=302)
 
 
-@router.post("/inventory/{campaign_id:int}/item", name="inventory_add_item")
+@router.post("/inventory/{campaign_id:int}/item", name="inventory_add_item", include_in_schema=False)
 async def inventory_add_item(
     campaign_id: int,
     db: AsyncSession = Depends(get_db),
@@ -206,59 +243,38 @@ async def inventory_add_item(
     expected_location: str | None = Form(None),
     notes: str | None = Form(None),
 ):
-    result = await db.execute(select(InventoryCampaign).where(InventoryCampaign.id == campaign_id))
-    campaign = result.scalar_one_or_none()
+    campaign = await inventory_repo.get_campaign_by_id(db, campaign_id)
     if not campaign:
-        from fastapi import HTTPException
         raise HTTPException(404, "Campaign not found")
-    item = InventoryItem(
-        campaign_id=campaign_id,
+    await add_campaign_item(
+        db, campaign_id,
         asset_id=asset_id if asset_id else None,
-        expected_location=expected_location if expected_location else None,
-        notes=notes if notes else None,
+        expected_location=expected_location,
+        notes=notes,
     )
-    db.add(item)
-    await db.flush()
     return RedirectResponse(url=f"/inventory/{campaign_id}", status_code=302)
 
 
-@router.post("/inventory/{campaign_id:int}/item/{item_id:int}/found", name="inventory_mark_found")
+@router.post("/inventory/{campaign_id:int}/item/{item_id:int}/found", name="inventory_mark_found", include_in_schema=False)
 async def inventory_mark_found(
     campaign_id: int,
     item_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
 ):
-    from datetime import datetime
-    result = await db.execute(
-        select(InventoryItem)
-        .where(InventoryItem.id == item_id)
-        .where(InventoryItem.campaign_id == campaign_id)
-    )
-    item = result.scalar_one_or_none()
-    if not item:
-        from fastapi import HTTPException
+    if not await mark_item_found_by_id(db, campaign_id, item_id):
         raise HTTPException(404, "Item not found")
-    item.found = True
-    item.found_at = datetime.utcnow()
-    await db.flush()
     return RedirectResponse(url=f"/inventory/{campaign_id}", status_code=302)
 
 
-@router.get("/inventory/{campaign_id:int}/export", name="inventory_export")
+@router.get("/inventory/{campaign_id:int}/export", name="inventory_export", include_in_schema=False)
 async def inventory_export(
     campaign_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_user),
 ):
-    result = await db.execute(
-        select(InventoryCampaign)
-        .where(InventoryCampaign.id == campaign_id)
-        .options(selectinload(InventoryCampaign.items).selectinload(InventoryItem.asset))
-    )
-    campaign = result.scalar_one_or_none()
+    campaign = await inventory_repo.get_campaign_with_items(db, campaign_id)
     if not campaign:
-        from fastapi import HTTPException
         raise HTTPException(404, "Campaign not found")
     items = list(campaign.items)
     buf = export_inventory_campaign_xlsx(campaign, items)

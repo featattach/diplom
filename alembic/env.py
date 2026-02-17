@@ -8,7 +8,7 @@ from alembic import context
 
 from app.config import SYNC_DATABASE_URL, BASE_DIR
 from app.database import Base
-from app.models import User, Asset, AssetEvent, InventoryCampaign, InventoryItem
+from app.models import User, Asset, AssetEvent, InventoryCampaign, InventoryItem, Company
 
 config = context.config
 if config.config_file_name is not None:

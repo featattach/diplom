@@ -19,12 +19,6 @@
 {% if request.query_params.get('restored') %}
 <div class="alert alert-success py-2">Данные восстановлены. Рекомендуется обновить страницу или перезайти в систему.</div>
 {% endif %}
-{% if request.query_params.get('error') == 'confirm' %}
-<div class="alert alert-warning py-2">Восстановление отменено: отметьте подтверждение.</div>
-{% endif %}
-{% if request.query_params.get('error') == 'drop_confirm' %}
-<div class="alert alert-warning py-2">Очистка базы отменена: отметьте подтверждение.</div>
-{% endif %}
 
 <div class="table-responsive">
     <table class="table table-hover">

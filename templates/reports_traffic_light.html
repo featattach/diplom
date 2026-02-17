@@ -51,7 +51,7 @@
                     {% for r in rows %}
                     <tr class="table-{{ r.color }}">
                         <td><a href="{{ request.url_for('asset_detail', asset_id=r.asset.id) }}">{{ r.asset.name }}</a></td>
-                        <td>{{ equipment_kind_labels.get(r.asset.equipment_kind, r.asset.equipment_kind or '—') }}</td>
+                        <td>{{ equipment_kind_label(r.asset.equipment_kind) }}</td>
                         <td>{% if r.asset.company %}{{ r.asset.company.name }}{% else %}—{% endif %}</td>
                         <td>{% if r.asset.manufacture_date %}{{ r.asset.manufacture_date.strftime('%d.%m.%Y') }}{% else %}—{% endif %}</td>
                         <td>{% if r.age_years is not none %}{{ r.age_years }}{% else %}—{% endif %}</td>

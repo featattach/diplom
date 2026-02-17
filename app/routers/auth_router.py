@@ -1,3 +1,4 @@
+import secrets
 from datetime import datetime
 from pathlib import Path
 
@@ -7,7 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from werkzeug.security import check_password_hash
 
-from app.config import AVATAR_DIR, ALLOWED_AVATAR_EXTENSIONS, MAX_AVATAR_SIZE_MB
+from app.config import AVATAR_DIR, ALLOWED_AVATAR_EXTENSIONS, MAX_AVATAR_SIZE_MB, CSRF_COOKIE_NAME
+from app.config import SECURE_COOKIES
 from app.database import get_db
 from app.models import User
 from app.auth import get_current_user, require_user, require_role, login_user, logout_user
@@ -17,53 +19,86 @@ from app.templates_ctx import templates
 router = APIRouter(prefix="", tags=["auth"])
 
 
-@router.get("/login", name="login_page")
+def _set_csrf_cookie(response, token: str) -> None:
+    response.set_cookie(
+        CSRF_COOKIE_NAME,
+        token,
+        max_age=3600,
+        httponly=True,
+        path="/",
+        secure=SECURE_COOKIES,
+        samesite="lax",
+    )
+
+
+@router.get("/login", name="login_page", include_in_schema=False)
 async def login_page(
     request: Request,
     current_user: User | None = Depends(get_current_user),
 ):
     if current_user:
         return RedirectResponse("/dashboard", status_code=302)
-    return templates.TemplateResponse(
+    csrf_token = secrets.token_urlsafe(32)
+    resp = templates.TemplateResponse(
         "login.html",
-        {"request": request, "user": None},
+        {"request": request, "user": None, "csrf_token": csrf_token},
     )
+    _set_csrf_cookie(resp, csrf_token)
+    return resp
 
 
-@router.post("/login")
+@router.post("/login", include_in_schema=False)
 async def login(
     request: Request,
     db: AsyncSession = Depends(get_db),
     username: str = Form(...),
     password: str = Form(...),
+    csrf_token: str | None = Form(None),
 ):
+    # CSRF: токен из формы должен совпадать с cookie, установленной при GET /login
+    cookie_csrf = request.cookies.get(CSRF_COOKIE_NAME)
+    if not csrf_token or not cookie_csrf or not secrets.compare_digest(csrf_token, cookie_csrf):
+        csrf_new = secrets.token_urlsafe(32)
+        resp = templates.TemplateResponse(
+            "login.html",
+            {"request": request, "user": None, "error": "Недействительная форма. Обновите страницу и попробуйте снова.", "csrf_token": csrf_new},
+            status_code=403,
+        )
+        _set_csrf_cookie(resp, csrf_new)
+        return resp
     result = await db.execute(select(User).where(User.username == username))
     user = result.scalar_one_or_none()
     if not user or not check_password_hash(user.password_hash, password):
-        return templates.TemplateResponse(
+        csrf_new = secrets.token_urlsafe(32)
+        resp = templates.TemplateResponse(
             "login.html",
-            {"request": request, "user": None, "error": "Неверный логин или пароль"},
+            {"request": request, "user": None, "error": "Неверный логин или пароль", "csrf_token": csrf_new},
             status_code=401,
         )
+        _set_csrf_cookie(resp, csrf_new)
+        return resp
     if not getattr(user, "is_active", True):
-        return templates.TemplateResponse(
+        csrf_new = secrets.token_urlsafe(32)
+        resp = templates.TemplateResponse(
             "login.html",
-            {"request": request, "user": None, "error": "Учётная запись заблокирована"},
+            {"request": request, "user": None, "error": "Учётная запись заблокирована", "csrf_token": csrf_new},
             status_code=403,
         )
+        _set_csrf_cookie(resp, csrf_new)
+        return resp
     res = RedirectResponse("/dashboard", status_code=302)
     await login_user(res, user.id)
     return res
 
 
-@router.get("/logout", name="logout")
+@router.get("/logout", name="logout", include_in_schema=False)
 async def logout(request: Request):
     res = RedirectResponse("/login", status_code=302)
     logout_user(res)
     return res
 
 
-@router.get("/profile/avatar", name="profile_avatar")
+@router.get("/profile/avatar", name="profile_avatar", include_in_schema=False)
 async def profile_avatar_form(
     request: Request,
     current_user: User = Depends(require_user),
@@ -79,7 +114,7 @@ async def profile_avatar_form(
     )
 
 
-@router.post("/profile/avatar", name="profile_avatar_upload")
+@router.post("/profile/avatar", name="profile_avatar_upload", include_in_schema=False)
 async def profile_avatar_upload(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
@@ -103,7 +138,7 @@ async def profile_avatar_upload(
     return RedirectResponse("/profile/avatar", status_code=302)
 
 
-@router.get("/uploads/avatars/{filename}", name="avatar_file")
+@router.get("/uploads/avatars/{filename}", name="avatar_file", include_in_schema=False)
 async def avatar_file(filename: str):
     path = AVATAR_DIR / filename
     if not path.is_file():

@@ -5,6 +5,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils import get_column_letter
 
+from app.constants import status_label
 from app.models import Asset, InventoryCampaign, InventoryItem
 
 
@@ -24,7 +25,6 @@ def export_assets_xlsx(assets: list[Asset]) -> BytesIO:
         cell.font = Font(bold=True)
         cell.fill = PatternFill(start_color="DDDDDD", end_color="DDDDDD", fill_type="solid")
 
-    status_labels = {"active": "Активно", "inactive": "Неактивно", "maintenance": "На обслуживании", "retired": "Списано"}
     for row, asset in enumerate(assets, 2):
         company_name = ""
         if getattr(asset, "company", None) and asset.company:
@@ -32,12 +32,13 @@ def export_assets_xlsx(assets: list[Asset]) -> BytesIO:
         ws.cell(row=row, column=1, value=asset.id)
         ws.cell(row=row, column=2, value=asset.name)
         ws.cell(row=row, column=3, value=getattr(asset, "model", None) or "")
-        ws.cell(row=row, column=4, value=getattr(asset, "equipment_kind", None) or "")
+        ek = getattr(asset, "equipment_kind", None)
+        ws.cell(row=row, column=4, value=(ek.value if ek and hasattr(ek, "value") else ek) or "")
         ws.cell(row=row, column=5, value=company_name)
         ws.cell(row=row, column=6, value=asset.serial_number or "")
         ws.cell(row=row, column=7, value=asset.asset_type or "")
         ws.cell(row=row, column=8, value=asset.location or "")
-        ws.cell(row=row, column=9, value=status_labels.get(asset.status.value, asset.status.value) if asset.status else "")
+        ws.cell(row=row, column=9, value=status_label(asset.status) if asset.status else "")
         ws.cell(row=row, column=10, value=asset.last_seen_at.isoformat() if asset.last_seen_at else "")
         ws.cell(row=row, column=11, value=asset.created_at.isoformat() if asset.created_at else "")
 

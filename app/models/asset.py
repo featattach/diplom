@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from datetime import date, datetime
-from sqlalchemy import String, DateTime, Date, ForeignKey, Text, Enum, Integer
+from sqlalchemy import String, DateTime, Date, ForeignKey, Text, Enum as SQLEnum, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import enum
 
@@ -25,7 +27,7 @@ class AssetEventType(str, enum.Enum):
 
 
 class EquipmentKind(str, enum.Enum):
-    """Тип техники: от него зависят отображаемые поля."""
+    """Тип техники: от него зависят отображаемые поля. Единый источник истины для значения в БД."""
     desktop = "desktop"       # системный блок (без диагонали)
     nettop = "nettop"         # неттоп
     laptop = "laptop"         # ноутбук
@@ -36,6 +38,7 @@ class EquipmentKind(str, enum.Enum):
     switch = "switch"         # коммутатор
     server = "server"         # сервер (есть поле U — юниты)
     sip_phone = "sip_phone"   # SIP-телефон
+    monoblock = "monoblock"   # моноблок
 
 
 class Asset(Base):
@@ -43,9 +46,15 @@ class Asset(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(256), nullable=False)
+    # Уникальность на уровне БД: серийный номер не повторяется
     serial_number: Mapped[str] = mapped_column(String(128), unique=True, index=True, nullable=True)
     asset_type: Mapped[str] = mapped_column(String(128), nullable=True)
-    equipment_kind: Mapped[str] = mapped_column(String(32), nullable=True)
+    # Без Mapped[...]: SQLAlchemy 2 + Python 3.14 некорректно обрабатывает Union/Optional в аннотации.
+    # Колонка Enum при чтении возвращает EquipmentKind | None.
+    equipment_kind = mapped_column(
+        SQLEnum(EquipmentKind, values_callable=lambda x: [e.value for e in x]),
+        nullable=True,
+    )
     model: Mapped[str] = mapped_column(String(256), nullable=True)
     location: Mapped[str] = mapped_column(String(256), nullable=True)
     status: Mapped[AssetStatus] = mapped_column(default=AssetStatus.active, nullable=False)

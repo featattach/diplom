@@ -46,6 +46,20 @@
     {% endif %}
     <main class="container main-content">
         <div class="content-card">
+            {% block alerts %}
+            {% if request.query_params.get('success') %}
+            <div class="alert alert-success alert-dismissible fade show mb-3" role="alert">
+                {{ request.query_params.get('success') }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Закрыть"></button>
+            </div>
+            {% endif %}
+            {% if request.query_params.get('error') %}
+            <div class="alert alert-danger alert-dismissible fade show mb-3" role="alert">
+                {{ flash_error_messages.get(request.query_params.get('error'), request.query_params.get('error')) }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Закрыть"></button>
+            </div>
+            {% endif %}
+            {% endblock %}
             {% block content %}{% endblock %}
         </div>
     </main>

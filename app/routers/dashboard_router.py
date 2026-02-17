@@ -1,15 +1,14 @@
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import INACTIVE_DAYS_THRESHOLD
 from app.database import get_db
-from app.models import Asset, InventoryCampaign
 from app.models.asset import AssetStatus
 from app.auth import require_user
 from app.models.user import User
 from app.templates_ctx import templates
+from app.repositories import asset_repo, inventory_repo
 
 router = APIRouter(prefix="", tags=["pages"])
 
@@ -30,7 +29,7 @@ def _is_inactive(asset, threshold_days=30):
     return (days is not None and days >= threshold_days), days
 
 
-@router.get("/dashboard", name="dashboard")
+@router.get("/dashboard", name="dashboard", include_in_schema=False)
 async def dashboard(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -39,8 +38,7 @@ async def dashboard(
     now = datetime.utcnow()
     threshold_7 = now - timedelta(days=7)
 
-    result = await db.execute(select(Asset).order_by(Asset.id))
-    all_assets = list(result.scalars().all())
+    all_assets = await asset_repo.get_all_assets_ordered_by_id(db)
 
     total = len(all_assets)
     by_status = {}
@@ -83,7 +81,7 @@ async def dashboard(
     if active_count < 0:
         active_count = 0
 
-    campaigns_count = (await db.execute(select(func.count(InventoryCampaign.id)))).scalar() or 0
+    campaigns_count = await inventory_repo.get_campaigns_count(db)
     movements_pending = 0
 
     alert_inactive = sum(1 for a in all_assets if _is_inactive(a, INACTIVE_DAYS_THRESHOLD)[0])

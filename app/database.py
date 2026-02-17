@@ -22,6 +22,7 @@ class Base(DeclarativeBase):
 
 
 async def get_db():
+    """Сессия БД на один запрос. В конце запроса выполняется commit(), при ошибке — rollback()."""
     async with AsyncSessionLocal() as session:
         try:
             yield session

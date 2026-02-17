@@ -13,18 +13,13 @@ from app.models import User
 from app.models.user import UserRole
 from app.auth import require_role
 from app.templates_ctx import templates
+from app.constants import ROLE_CHOICES, ROLE_LABELS
 from app.services.backup import create_backup, list_backups, get_backup_path, restore_backup, drop_database
 
 router = APIRouter(prefix="", tags=["admin"])
 
-ROLE_LABELS = {
-    "admin": "Администратор",
-    "user": "Пользователь",
-    "viewer": "Наблюдатель",
-}
 
-
-@router.get("/admin/users", name="admin_users")
+@router.get("/admin/users", name="admin_users", include_in_schema=False)
 async def admin_users_list(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -43,7 +38,7 @@ async def admin_users_list(
     )
 
 
-@router.get("/admin/users/create", name="admin_user_create")
+@router.get("/admin/users/create", name="admin_user_create", include_in_schema=False)
 async def admin_user_create_form(
     request: Request,
     current_user: User = Depends(require_role(UserRole.admin)),
@@ -54,12 +49,12 @@ async def admin_user_create_form(
             "request": request,
             "user": current_user,
             "role_labels": ROLE_LABELS,
-            "role_choices": [{"value": k, "label": v} for k, v in ROLE_LABELS.items()],
+            "role_choices": ROLE_CHOICES,
         },
     )
 
 
-@router.post("/admin/users/create", name="admin_user_create_post")
+@router.post("/admin/users/create", name="admin_user_create_post", include_in_schema=False)
 async def admin_user_create(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -70,7 +65,6 @@ async def admin_user_create(
     role: str = Form("user"),
     is_active: str | None = Form("1"),
 ):
-    role_choices = [{"value": k, "label": v} for k, v in ROLE_LABELS.items()]
     if not username or not username.strip():
         return templates.TemplateResponse(
             "admin_user_create.html",
@@ -78,7 +72,7 @@ async def admin_user_create(
                 "request": request,
                 "user": current_user,
                 "role_labels": ROLE_LABELS,
-                "role_choices": role_choices,
+                "role_choices": ROLE_CHOICES,
                 "error": "Введите логин",
             },
             status_code=400,
@@ -91,7 +85,7 @@ async def admin_user_create(
                 "request": request,
                 "user": current_user,
                 "role_labels": ROLE_LABELS,
-                "role_choices": role_choices,
+                "role_choices": ROLE_CHOICES,
                 "error": "Пароли не совпадают или пусты",
                 "username": username,
             },
@@ -105,7 +99,7 @@ async def admin_user_create(
                 "request": request,
                 "user": current_user,
                 "role_labels": ROLE_LABELS,
-                "role_choices": role_choices,
+                "role_choices": ROLE_CHOICES,
                 "error": "Пользователь с таким логином уже существует",
                 "username": username,
             },
@@ -123,7 +117,7 @@ async def admin_user_create(
     return RedirectResponse(url="/admin/users", status_code=302)
 
 
-@router.post("/admin/users/{user_id:int}/delete", name="admin_user_delete")
+@router.post("/admin/users/{user_id:int}/delete", name="admin_user_delete", include_in_schema=False)
 async def admin_user_delete(
     user_id: int,
     db: AsyncSession = Depends(get_db),
@@ -141,7 +135,7 @@ async def admin_user_delete(
     return RedirectResponse(url="/admin/users", status_code=302)
 
 
-@router.get("/admin/users/{user_id:int}/edit", name="admin_user_edit")
+@router.get("/admin/users/{user_id:int}/edit", name="admin_user_edit", include_in_schema=False)
 async def admin_user_edit_form(
     request: Request,
     user_id: int,
@@ -161,7 +155,7 @@ async def admin_user_edit_form(
             "user": current_user,
             "target_user": target,
             "role_labels": ROLE_LABELS,
-            "role_choices": [{"value": k, "label": v} for k, v in ROLE_LABELS.items()],
+            "role_choices": ROLE_CHOICES,
             "is_self": is_self,
             "max_size_mb": MAX_AVATAR_SIZE_MB,
             "allowed_extensions": ", ".join(ALLOWED_AVATAR_EXTENSIONS),
@@ -169,7 +163,7 @@ async def admin_user_edit_form(
     )
 
 
-@router.post("/admin/users/{user_id:int}/avatar", name="admin_user_avatar_upload")
+@router.post("/admin/users/{user_id:int}/avatar", name="admin_user_avatar_upload", include_in_schema=False)
 async def admin_user_avatar_upload(
     user_id: int,
     db: AsyncSession = Depends(get_db),
@@ -199,7 +193,7 @@ async def admin_user_avatar_upload(
     return RedirectResponse(url=f"/admin/users/{user_id}/edit", status_code=302)
 
 
-@router.post("/admin/users/{user_id:int}/edit", name="admin_user_edit_post")
+@router.post("/admin/users/{user_id:int}/edit", name="admin_user_edit_post", include_in_schema=False)
 async def admin_user_edit(
     user_id: int,
     db: AsyncSession = Depends(get_db),
@@ -229,7 +223,7 @@ async def admin_user_edit(
 
 # ——— Бекапы ———
 
-@router.get("/admin/backups", name="admin_backups")
+@router.get("/admin/backups", name="admin_backups", include_in_schema=False)
 async def admin_backups_page(
     request: Request,
     current_user: User = Depends(require_role(UserRole.admin)),
@@ -245,7 +239,7 @@ async def admin_backups_page(
     )
 
 
-@router.post("/admin/backups/create", name="admin_backup_create")
+@router.post("/admin/backups/create", name="admin_backup_create", include_in_schema=False)
 async def admin_backup_create(
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
@@ -253,7 +247,7 @@ async def admin_backup_create(
     return RedirectResponse(url=f"/admin/backups?created={name}", status_code=302)
 
 
-@router.get("/admin/backups/download/{filename}", name="admin_backup_download")
+@router.get("/admin/backups/download/{filename}", name="admin_backup_download", include_in_schema=False)
 async def admin_backup_download(
     filename: str,
     current_user: User = Depends(require_role(UserRole.admin)),
@@ -268,7 +262,7 @@ async def admin_backup_download(
     )
 
 
-@router.post("/admin/backups/restore", name="admin_backup_restore")
+@router.post("/admin/backups/restore", name="admin_backup_restore", include_in_schema=False)
 async def admin_backup_restore(
     request: Request,
     current_user: User = Depends(require_role(UserRole.admin)),
@@ -288,7 +282,7 @@ async def admin_backup_restore(
     return RedirectResponse(url="/admin/backups?restored=1", status_code=302)
 
 
-@router.post("/admin/backups/drop", name="admin_backup_drop")
+@router.post("/admin/backups/drop", name="admin_backup_drop", include_in_schema=False)
 async def admin_backup_drop(
     current_user: User = Depends(require_role(UserRole.admin)),
     confirm: str = Form(None),

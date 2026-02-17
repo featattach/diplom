@@ -27,7 +27,7 @@
                 <select name="status" class="form-select">
                     <option value="">Все статусы</option>
                     {% for s in status_enum %}
-                    <option value="{{ s.value }}" {% if filters.status == s.value %}selected{% endif %}>{{ status_labels.get(s.value, s.value) }}</option>
+                    <option value="{{ s.value }}" {% if filters.status == s.value %}selected{% endif %}>{{ status_label(s) }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -90,10 +90,10 @@
                     {% for asset in assets %}
                     <tr class="{% if is_inactive_fn(asset) %}table-warning{% endif %}">
                         <td><a href="{{ request.url_for('asset_detail', asset_id=asset.id) }}">{{ asset.name }}</a></td>
-                        <td>{{ equipment_kind_labels.get(asset.equipment_kind, asset.equipment_kind or '—') }}</td>
+                        <td>{{ equipment_kind_label(asset.equipment_kind) }}</td>
                         <td>{% if asset.company %}{{ asset.company.name }}{% else %}—{% endif %}</td>
                         <td>{{ asset.location or '—' }}</td>
-                        <td><span class="badge bg-secondary">{{ status_labels.get(asset.status.value, asset.status.value) }}</span></td>
+                        <td><span class="badge bg-secondary">{{ status_label(asset.status) }}</span></td>
                         <td><a href="{{ request.url_for('asset_detail', asset_id=asset.id) }}" class="btn btn-sm btn-outline-primary">Открыть</a></td>
                     </tr>
                     {% else %}

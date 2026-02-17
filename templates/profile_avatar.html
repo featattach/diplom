@@ -3,15 +3,6 @@
 {% block content %}
 <h1 class="card-title">Фото профиля</h1>
 <p class="card-subtitle">Загрузите изображение для отображения в шапке сайта. Форматы: JPG, PNG, GIF, WebP. Не более {{ max_size_mb }} МБ.</p>
-{% if request.query_params.get('error') == 'no_file' %}
-<div class="alert alert-danger">Файл не выбран.</div>
-{% endif %}
-{% if request.query_params.get('error') == 'bad_type' %}
-<div class="alert alert-danger">Недопустимый формат. Разрешены: {{ allowed_extensions }}.</div>
-{% endif %}
-{% if request.query_params.get('error') == 'too_big' %}
-<div class="alert alert-danger">Файл слишком большой. Максимум {{ max_size_mb }} МБ.</div>
-{% endif %}
 <div class="row align-items-center">
     <div class="col-md-4 mb-3">
         {% if user.avatar %}

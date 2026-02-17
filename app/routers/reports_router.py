@@ -1,82 +1,36 @@
-from datetime import date
-from io import BytesIO
-
+from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, Request, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-from openpyxl import Workbook
-from openpyxl.styles import PatternFill, Font, Alignment
-from openpyxl.utils import get_column_letter
 
 from app.config import INACTIVE_DAYS_THRESHOLD
 from app.database import get_db
-from app.models import Asset, Company, InventoryCampaign
 from app.models.asset import AssetStatus
 from app.auth import require_user
 from app.models.user import User
 from app.templates_ctx import templates
-from app.routers.assets_router import (
-    EQUIPMENT_KIND_LABELS,
-    EQUIPMENT_KIND_CHOICES,
-    _assets_list_query,
-    is_asset_inactive,
+from app.constants import EQUIPMENT_KIND_CHOICES, EQUIPMENT_KIND_LABELS, STATUS_LABELS
+from app.utils.asset_helpers import is_asset_inactive
+from app.repositories import asset_repo, reference_repo, inventory_repo
+from app.schemas.reports import EquipmentReportFilter, TrafficLightReportFilter
+from app.services.report_service import (
+    build_traffic_light_rows,
+    export_equipment_xlsx,
+    export_traffic_light_xlsx,
 )
-from app.services.export_xlsx import export_assets_xlsx
 
 router = APIRouter(prefix="", tags=["reports"])
 
-# Типы техники для отчёта «Светофор» (компы, без мониторов/принтеров/телефонов)
-TRAFFIC_LIGHT_KINDS = ("desktop", "nettop", "laptop", "server")
 
-STATUS_LABELS = {
-    "active": "Активно", "inactive": "Неактивно",
-    "maintenance": "На обслуживании", "retired": "Списано",
-}
-
-
-def _age_years(manufacture_date: date | None) -> float | None:
-    if not manufacture_date:
-        return None
-    today = date.today()
-    delta = (today - manufacture_date).days
-    return round(delta / 365.25, 1)
-
-
-def _traffic_color(age_years: float | None, threshold_years: int) -> str:
-    if age_years is None:
-        return "secondary"  # серый — нет даты
-    if age_years < 3:
-        return "success"   # зелёный
-    if age_years < threshold_years:
-        return "warning"  # жёлтый
-    return "danger"       # красный
-
-
-# Порядок сортировки по цвету: красный → жёлтый → зелёный → серый
-COLOR_SORT_ORDER = {"danger": 0, "warning": 1, "success": 2, "secondary": 3}
-# Заливка для Excel (светофор)
-EXCEL_FILLS = {
-    "danger": PatternFill(start_color="FFCDD2", end_color="FFCDD2", fill_type="solid"),   # светлый красный
-    "warning": PatternFill(start_color="FFF9C4", end_color="FFF9C4", fill_type="solid"),  # светлый жёлтый
-    "success": PatternFill(start_color="C8E6C9", end_color="C8E6C9", fill_type="solid"),  # светлый зелёный
-    "secondary": PatternFill(start_color="EEEEEE", end_color="EEEEEE", fill_type="solid"),
-}
-
-
-@router.get("/reports", name="reports")
+@router.get("/reports", name="reports", include_in_schema=False)
 async def reports(
     request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_user),
 ):
-    total_assets = (await db.execute(select(func.count(Asset.id)))).scalar() or 0
-    by_status = await db.execute(
-        select(Asset.status, func.count(Asset.id)).group_by(Asset.status)
-    )
-    status_counts = dict(by_status.all())
-    total_campaigns = (await db.execute(select(func.count(InventoryCampaign.id)))).scalar() or 0
+    total_assets = await asset_repo.get_total_assets_count(db)
+    status_counts = await asset_repo.get_asset_status_counts(db)
+    total_campaigns = await inventory_repo.get_campaigns_count(db)
     return templates.TemplateResponse(
         "reports.html",
         {
@@ -91,7 +45,28 @@ async def reports(
     )
 
 
-@router.get("/reports/equipment", name="reports_equipment")
+def _equipment_filter_from_query(
+    name: str | None,
+    status: str | None,
+    inactive_by_activity: bool,
+    equipment_kind: str | None,
+    location: str | None,
+    company_id: str | None,
+    sort: str | None,
+) -> EquipmentReportFilter:
+    sort_val = "newest" if sort not in ("newest", "oldest") else sort
+    return EquipmentReportFilter(
+        name=name,
+        status=status,
+        inactive_by_activity=inactive_by_activity,
+        equipment_kind=equipment_kind,
+        location=location or None,
+        company_id=company_id or None,
+        sort=sort_val,
+    )
+
+
+@router.get("/reports/equipment", name="reports_equipment", include_in_schema=False)
 async def reports_equipment(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -104,18 +79,21 @@ async def reports_equipment(
     company_id: str | None = Query(None),
     sort: str | None = Query("newest"),
 ):
-    sort_val = "newest" if sort not in ("newest", "oldest") else sort
-    q = _assets_list_query(name, status, inactive_by_activity, equipment_kind, location, company_id, sort_val)
-    result = await db.execute(q)
-    assets = list(result.scalars().all())
-    if inactive_by_activity:
-        assets = [a for a in assets if is_asset_inactive(a)]
-    companies_result = await db.execute(select(Company).order_by(Company.name))
-    companies = list(companies_result.scalars().all())
-    locations_result = await db.execute(
-        select(Asset.location).where(Asset.location.isnot(None)).where(Asset.location != "").distinct().order_by(Asset.location)
+    filters = _equipment_filter_from_query(name, status, inactive_by_activity, equipment_kind, location, company_id, sort)
+    assets = await asset_repo.get_assets_list(
+        db,
+        name=filters.name,
+        status=filters.status,
+        inactive_by_activity=filters.inactive_by_activity,
+        equipment_kind=filters.equipment_kind,
+        location=filters.location,
+        company_id=filters.company_id,
+        sort=filters.sort_value(),
     )
-    location_choices = [r[0] for r in locations_result.all()]
+    if filters.inactive_by_activity:
+        assets = [a for a in assets if is_asset_inactive(a)]
+    companies = await reference_repo.get_companies_ordered(db)
+    location_choices = await asset_repo.get_distinct_locations(db)
     qp = {
         k: v
         for k, v in [
@@ -125,7 +103,7 @@ async def reports_equipment(
             ("equipment_kind", equipment_kind),
             ("location", location or ""),
             ("company_id", company_id or ""),
-            ("sort", sort_val if sort_val != "newest" else None),
+            ("sort", filters.sort_value() if filters.sort_value() != "newest" else None),
         ]
         if v is not None and v != ""
     }
@@ -140,7 +118,7 @@ async def reports_equipment(
             "companies": companies,
             "location_choices": location_choices,
             "export_url": export_url,
-            "filters": {"name": name, "status": status, "inactive_by_activity": inactive_by_activity, "equipment_kind": equipment_kind, "location": location or "", "company_id": company_id or "", "sort": sort_val},
+            "filters": {"name": filters.name, "status": filters.status, "inactive_by_activity": filters.inactive_by_activity, "equipment_kind": filters.equipment_kind, "location": filters.location or "", "company_id": filters.company_id or "", "sort": filters.sort_value()},
             "status_enum": AssetStatus,
             "status_labels": STATUS_LABELS,
             "equipment_kind_choices": EQUIPMENT_KIND_CHOICES,
@@ -151,7 +129,7 @@ async def reports_equipment(
     )
 
 
-@router.get("/reports/equipment/export.xlsx", name="reports_equipment_export")
+@router.get("/reports/equipment/export.xlsx", name="reports_equipment_export", include_in_schema=False)
 async def reports_equipment_export(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_user),
@@ -163,13 +141,13 @@ async def reports_equipment_export(
     company_id: str | None = Query(None),
     sort: str | None = Query("newest"),
 ):
-    sort_val = "newest" if sort not in ("newest", "oldest") else sort
-    q = _assets_list_query(name, status, inactive_by_activity, equipment_kind, location, company_id, sort_val)
-    result = await db.execute(q)
-    assets = list(result.scalars().all())
-    if inactive_by_activity:
-        assets = [a for a in assets if is_asset_inactive(a)]
-    buf = export_assets_xlsx(assets)
+    filters = _equipment_filter_from_query(name, status, inactive_by_activity, equipment_kind, location, company_id, sort)
+    buf = await export_equipment_xlsx(
+        db,
+        filters,
+        generated_by=current_user.username or str(current_user.id),
+        generated_at=datetime.now(UTC),
+    )
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -177,7 +155,17 @@ async def reports_equipment_export(
     )
 
 
-@router.get("/reports/traffic-light", name="reports_traffic_light")
+def _traffic_light_filter_from_query(company_id: str | None, threshold_years: int) -> TrafficLightReportFilter:
+    company_id_int = None
+    if company_id and str(company_id).strip():
+        try:
+            company_id_int = int(company_id.strip())
+        except ValueError:
+            pass
+    return TrafficLightReportFilter(company_id=company_id_int, threshold_years=threshold_years)
+
+
+@router.get("/reports/traffic-light", name="reports_traffic_light", include_in_schema=False)
 async def reports_traffic_light(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -185,109 +173,38 @@ async def reports_traffic_light(
     company_id: str | None = Query(None, description="Организация"),
     threshold_years: int = Query(5, ge=1, le=20, description="Порог устаревания (лет), красный цвет"),
 ):
-    company_id_int = None
-    if company_id and str(company_id).strip():
-        try:
-            company_id_int = int(company_id.strip())
-        except ValueError:
-            pass
-    companies_result = await db.execute(select(Company).order_by(Company.name))
-    companies = list(companies_result.scalars().all())
-    q = (
-        select(Asset)
-        .where(Asset.equipment_kind.in_(TRAFFIC_LIGHT_KINDS))
-        .options(selectinload(Asset.company))
-        .order_by(Asset.company_id, Asset.name)
-    )
-    if company_id_int is not None:
-        q = q.where(Asset.company_id == company_id_int)
-    result = await db.execute(q)
-    assets = list(result.scalars().all())
-    rows = []
-    for a in assets:
-        age = _age_years(getattr(a, "manufacture_date", None))
-        color = _traffic_color(age, threshold_years)
-        rows.append({"asset": a, "age_years": age, "color": color})
-    rows.sort(key=lambda r: (COLOR_SORT_ORDER.get(r["color"], 99), (r["asset"].name or "").lower()))
+    filters = _traffic_light_filter_from_query(company_id, threshold_years)
+    companies = await reference_repo.get_companies_ordered(db)
+    assets = await asset_repo.get_traffic_light_assets(db, filters.company_id)
+    rows = build_traffic_light_rows(assets, filters.threshold_years)
     return templates.TemplateResponse(
         "reports_traffic_light.html",
         {
             "request": request,
             "user": current_user,
             "companies": companies,
-            "company_id": company_id_int,
-            "threshold_years": threshold_years,
+            "company_id": filters.company_id,
+            "threshold_years": filters.threshold_years,
             "rows": rows,
             "equipment_kind_labels": EQUIPMENT_KIND_LABELS,
         },
     )
 
 
-def _status_label_for_color(color: str, threshold_years: int) -> str:
-    if color == "success":
-        return "до 3 лет"
-    if color == "warning":
-        return f"3–{threshold_years} лет"
-    if color == "danger":
-        return f"старше {threshold_years}"
-    return "нет даты"
-
-
-@router.get("/reports/traffic-light/export.xlsx", name="reports_traffic_light_export")
+@router.get("/reports/traffic-light/export.xlsx", name="reports_traffic_light_export", include_in_schema=False)
 async def reports_traffic_light_export(
-    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_user),
     company_id: str | None = Query(None, description="Организация"),
     threshold_years: int = Query(5, ge=1, le=20, description="Порог устаревания (лет)"),
 ):
-    company_id_int = None
-    if company_id and str(company_id).strip():
-        try:
-            company_id_int = int(company_id.strip())
-        except ValueError:
-            pass
-    q = (
-        select(Asset)
-        .where(Asset.equipment_kind.in_(TRAFFIC_LIGHT_KINDS))
-        .options(selectinload(Asset.company))
-        .order_by(Asset.company_id, Asset.name)
+    filters = _traffic_light_filter_from_query(company_id, threshold_years)
+    buf = await export_traffic_light_xlsx(
+        db,
+        filters,
+        generated_by=current_user.username or str(current_user.id),
+        generated_at=datetime.now(UTC),
     )
-    if company_id_int is not None:
-        q = q.where(Asset.company_id == company_id_int)
-    result = await db.execute(q)
-    assets = list(result.scalars().all())
-    rows = []
-    for a in assets:
-        age = _age_years(getattr(a, "manufacture_date", None))
-        color = _traffic_color(age, threshold_years)
-        rows.append({"asset": a, "age_years": age, "color": color})
-    rows.sort(key=lambda r: (COLOR_SORT_ORDER.get(r["color"], 99), (r["asset"].name or "").lower()))
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Светофор"
-    headers = ["Название", "Тип", "Организация", "Дата выпуска", "Возраст (лет)", "Статус"]
-    for col, title in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col, value=title)
-        cell.font = Font(bold=True)
-        cell.alignment = Alignment(horizontal="center", wrap_text=True)
-    for row_idx, r in enumerate(rows, 2):
-        a = r["asset"]
-        ws.cell(row=row_idx, column=1, value=a.name or "")
-        ws.cell(row=row_idx, column=2, value=EQUIPMENT_KIND_LABELS.get(a.equipment_kind, a.equipment_kind or "—"))
-        ws.cell(row=row_idx, column=3, value=a.company.name if a.company else "—")
-        ws.cell(row=row_idx, column=4, value=a.manufacture_date.strftime("%d.%m.%Y") if getattr(a, "manufacture_date", None) else "—")
-        ws.cell(row=row_idx, column=5, value=r["age_years"] if r["age_years"] is not None else "—")
-        ws.cell(row=row_idx, column=6, value=_status_label_for_color(r["color"], threshold_years))
-        fill = EXCEL_FILLS.get(r["color"], EXCEL_FILLS["secondary"])
-        for c in range(1, 7):
-            ws.cell(row=row_idx, column=c).fill = fill
-    for c in range(1, 7):
-        ws.column_dimensions[get_column_letter(c)].width = 18
-    buf = BytesIO()
-    wb.save(buf)
-    buf.seek(0)
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

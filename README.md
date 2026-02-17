@@ -1,6 +1,19 @@
 # Asset Management (FastAPI + Jinja2 + Bootstrap)
 
-Серверное приложение на FastAPI с рендерингом Jinja2 и Bootstrap.
+Серверное приложение на FastAPI с рендерингом Jinja2 и Bootstrap: учёт оборудования, инвентаризация, отчёты, экспорт в Excel.
+
+## Структура модулей (слои)
+
+После рефакторинга раскладка соответствует трём слоям:
+
+| Слой | Каталог / файлы | Назначение |
+|------|------------------|------------|
+| **Data** | `models/` | Сущности БД (User, Asset, AssetEvent, Company, InventoryCampaign, InventoryItem). |
+| **Data** | `repositories/` | Доступ к БД: `asset_repo`, `inventory_repo`, `reference_repo` (выборки, фильтры, сводки). |
+| **Application** | `services/` | Бизнес-логика: `assets_service`, `inventory_service`, `report_service`, `export_xlsx`, `attachments_service`, `company_service`. |
+| **Presentation** | `routers/` | HTTP: `assets`, `assets_events`, `inventory_router`, `reports_router`, `qr`, `admin_router`, `auth_router`, `companies_router`, `dashboard_router`, `movements_router`. |
+
+Дополнительно: `constants.py` — подписи и опции для UI; `config.py` — настройки; `auth.py` — сессия, роли, зависимости; `schemas/` — DTO для отчётов.
 
 ## Требования
 
@@ -89,11 +102,14 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - **InventoryCampaign** — кампания инвентаризации
 - **InventoryItem** — пункт инвентаризации (связь с активом, found, notes)
 
-## Авторизация
+## Авторизация и роли
 
-- Сессия в cookie (подпись через itsdangerous), срок жизни 7 дней.
-- Роли: `admin`, `user`, `viewer`. Проверка через `require_role(UserRole.admin)` при необходимости.
-- Выход: GET `/logout`.
+- Сессия в cookie (подпись через itsdangerous), срок жизни 7 дней. Для HTTPS задать `SECURE_COOKIES=true`.
+- **Роли:** `admin`, `user`, `viewer`.
+  - **admin:** полный доступ, включая пользователей (`/admin/users`), бекапы (`/admin/backups`), создание/редактирование кампаний и активов.
+  - **user:** создание и редактирование активов, кампаний, компаний, экспорт, отметки инвентаризации; нет доступа к управлению пользователями и бекапам.
+  - **viewer:** только просмотр (списки, карточки, отчёты, экспорт).
+- Выход: GET `/logout`. Форма входа защищена CSRF (токен в cookie и в скрытом поле).
 
 ## Неактивные устройства
 
@@ -110,7 +126,9 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 |------------|----------|
 | `DATABASE_URL` | URL БД (по умолчанию SQLite в `data/app.db`) |
 | `SECRET_KEY` | Ключ подписи сессии (обязательно сменить в проде) |
+| `SECURE_COOKIES` | `true` — cookie только по HTTPS (для продакшена) |
 | `INACTIVE_DAYS_THRESHOLD` | Порог дней для подсветки неактивных устройств (по умолчанию 30) |
+| `MAX_IMPORT_SIZE_MB` | Макс. размер файла импорта оборудования, МБ (по умолчанию 20) |
 | `ADMIN_USER` / `ADMIN_PASSWORD` | Логин/пароль при создании admin через `scripts.init_admin` |
 
 ## Запуск в Docker
@@ -156,12 +174,33 @@ docker run --rm -it -v "$(pwd)/data:/app/data" vkr-app python -m scripts.init_ad
 
 ---
 
+## Бекапы
+
+- В интерфейсе: **Администрирование → Бекапы** (`/admin/backups`). Доступно только роли **admin**.
+- Создание бекапа: кнопка «Создать бекап» — в `data/backups/` сохраняется zip (БД `app.db`, каталоги `avatars/`, `qrcodes/`).
+- Скачивание и восстановление — через ту же страницу. Восстановление перезаписывает текущую БД и каталоги.
+- Очистка БД (Drop): удаляет все данные и создаёт одного администратора admin/admin.
+
 ## Полезные команды
 
 ```bash
 # Новая миграция после изменения моделей
 alembic revision --autogenerate -m "описание"
 
+# Привести базу к актуальной версии
+alembic upgrade head
+
 # Откат на одну миграцию
 alembic downgrade -1
 ```
+
+## Тесты
+
+```bash
+pip install pytest pytest-asyncio
+pytest tests -v
+```
+
+- **Unit:** правила смены статусов активов, генерация событий (AssetEvent), запрет изменения location/current_user для списанного оборудования.
+- **Integration:** доступ к `/assets`, `/reports`, экспорт без авторизации (302/401) и с авторизацией (200).
+- **Audit trail:** обновление актива создаёт запись в AssetEvent с changes_json.

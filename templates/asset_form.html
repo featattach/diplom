@@ -137,7 +137,7 @@
         <label class="form-label">Статус *</label>
         <select name="status" class="form-select" required>
             {% for s in status_choices %}
-            <option value="{{ s.value }}" {% if asset and asset.status == s %}selected{% elif not asset and s.value == 'active' %}selected{% endif %}>{{ status_labels.get(s.value, s.value) }}</option>
+            <option value="{{ s.value }}" {% if asset and asset.status == s %}selected{% elif not asset and s.value == 'active' %}selected{% endif %}>{{ status_label(s) }}</option>
             {% endfor %}
         </select>
     </div>
