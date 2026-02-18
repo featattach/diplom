@@ -133,12 +133,24 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ## Запуск в Docker
 
-### Сборка и запуск
+Репозиторий: [https://github.com/featattach/diplom](https://github.com/featattach/diplom)
+
+### 1. Клонировать и собрать образ
 
 ```bash
+git clone https://github.com/featattach/diplom.git
+cd diplom
 docker build -t vkr-app .
+```
+
+### 2. Запустить контейнер
+
+```bash
 docker run -p 8000:8000 vkr-app
 ```
+
+Откройте в браузере: **http://localhost:8000**  
+Страница входа: **http://localhost:8000/login**
 
 Без тома используется **новая БД** в контейнере. При первом старте автоматически создаётся пользователь **admin** (пароль: **admin**) — можно сразу войти.
 
