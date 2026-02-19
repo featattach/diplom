@@ -331,7 +331,7 @@ def _parse_asset_form(
     manufacture_date=None,
 ):
     import json
-    from datetime import date
+    from datetime import date, datetime
     equipment_kind_enum = None
     if equipment_kind and equipment_kind.strip():
         try:

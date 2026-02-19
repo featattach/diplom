@@ -233,16 +233,22 @@ async def inventory_add_item(
     campaign_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
-    asset_id: int | None = Form(None),
+    asset_id: str | None = Form(None),
     expected_location: str | None = Form(None),
     notes: str | None = Form(None),
 ):
     campaign = await inventory_repo.get_campaign_by_id(db, campaign_id)
     if not campaign:
         raise HTTPException(404, "Campaign not found")
+    aid = None
+    if asset_id and str(asset_id).strip():
+        try:
+            aid = int(asset_id)
+        except ValueError:
+            pass
     await add_campaign_item(
         db, campaign_id,
-        asset_id=asset_id if asset_id else None,
+        asset_id=aid,
         expected_location=expected_location,
         notes=notes,
     )
