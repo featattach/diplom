@@ -36,10 +36,8 @@ async def asset_mark_inventory_found(
     if not await inventory_repo.get_campaign_by_id(db, campaign_id):
         raise HTTPException(404, "Campaign not found")
     await mark_asset_found(db, campaign_id, asset_id)
-    return RedirectResponse(
-        request.url_for("asset_detail", asset_id=asset_id) + f"?inventory={campaign_id}&marked=1",
-        status_code=303,
-    )
+    url = request.url_for("asset_detail", asset_id=asset_id).include_query_params(inventory=campaign_id, marked=1)
+    return RedirectResponse(url=url, status_code=303)
 
 
 @router.get("/inventory", name="inventory_list", include_in_schema=False)
@@ -113,10 +111,8 @@ async def inventory_generate_scope(
         count = await generate_campaign_scope(db, campaign_id)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    return RedirectResponse(
-        request.url_for("inventory_detail", campaign_id=campaign_id) + f"?scope_generated={count}",
-        status_code=303,
-    )
+    url = request.url_for("inventory_detail", campaign_id=campaign_id).include_query_params(scope_generated=str(count))
+    return RedirectResponse(url=url, status_code=303)
 
 
 @router.post("/inventory/{campaign_id:int}/finish", name="inventory_finish", include_in_schema=False)
@@ -129,10 +125,8 @@ async def inventory_finish(
     """Завершает кампанию (устанавливает дату окончания)."""
     if not await finish_campaign(db, campaign_id):
         raise HTTPException(404, "Campaign not found")
-    return RedirectResponse(
-        request.url_for("inventory_detail", campaign_id=campaign_id) + "?finished=1",
-        status_code=303,
-    )
+    url = request.url_for("inventory_detail", campaign_id=campaign_id).include_query_params(finished=1)
+    return RedirectResponse(url=url, status_code=303)
 
 
 @router.get("/inventory/create", name="inventory_create", include_in_schema=False)
