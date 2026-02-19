@@ -128,7 +128,7 @@ EQUIPMENT_KIND_LABELS_TO_VALUE = {
     "sip-телефон": "sip_phone",
     "sip телефон": "sip_phone",
     "sip_phone": "sip_phone",
-    "моноблок": "desktop",  # маппим в desktop при отсутствии monoblock в модели
+    "моноблок": "monoblock",
 }
 
 

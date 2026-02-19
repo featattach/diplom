@@ -82,11 +82,11 @@ EQUIPMENT_KIND_LABELS_TO_VALUE = {
 }
 
 # Группы типов техники (для условного отображения полей в формах)
-EQUIPMENT_KIND_HAS_SCREEN = ("laptop", "monitor")
+EQUIPMENT_KIND_HAS_SCREEN = ("laptop", "monitor", "monoblock")  # моноблок — встроенный экран
 EQUIPMENT_KIND_NEEDS_RACK = ("server",)
-EQUIPMENT_KIND_HAS_TECH = ("desktop", "nettop", "laptop", "server")
-EQUIPMENT_KIND_HAS_OS = ("desktop", "nettop", "laptop", "server")
-EQUIPMENT_KIND_HAS_MANUFACTURE_DATE = ("desktop", "nettop", "laptop", "server")
+EQUIPMENT_KIND_HAS_TECH = ("desktop", "nettop", "laptop", "server", "monoblock")  # моноблок = ПК с экраном
+EQUIPMENT_KIND_HAS_OS = ("desktop", "nettop", "laptop", "server", "monoblock")
+EQUIPMENT_KIND_HAS_MANUFACTURE_DATE = ("desktop", "nettop", "laptop", "server", "monoblock")
 
 # --- ОС ---
 OS_OPTIONS = [
