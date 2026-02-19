@@ -87,3 +87,13 @@ async def add_asset_event(
     db.add(event)
     await db.flush()
     logger.info("asset_event asset_id=%s event_type=%s created_by_id=%s", asset_id, event_type.value, created_by_id)
+
+
+async def delete_asset(db: AsyncSession, asset: Asset) -> None:
+    """
+    Удаляет актив из БД. События (AssetEvent) удаляются каскадно.
+    Пункты инвентаризации (InventoryItem) получают asset_id=NULL (SET NULL).
+    """
+    await db.delete(asset)
+    await db.flush()
+    logger.info("asset_deleted asset_id=%s name=%s", asset.id, getattr(asset, "name", ""))

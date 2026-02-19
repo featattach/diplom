@@ -31,7 +31,7 @@ from app.models.asset import AssetStatus, EquipmentKind
 from app.auth import require_user, require_role
 from app.models.user import User, UserRole
 from app.templates_ctx import templates
-from app.services.assets_service import create_asset as service_create_asset, update_asset as service_update_asset
+from app.services.assets_service import create_asset as service_create_asset, update_asset as service_update_asset, delete_asset as service_delete_asset
 from app.services.export_xlsx import export_assets_xlsx
 from app.services.import_xlsx import parse_import_xlsx, build_import_template_xlsx
 
@@ -649,3 +649,18 @@ async def asset_edit(
     except ValueError as e:
         raise HTTPException(400, str(e))
     return RedirectResponse(url=f"/assets/{asset_id}", status_code=302)
+
+
+@router.post("/assets/{asset_id:int}/delete", name="asset_delete_post", include_in_schema=False)
+async def asset_delete(
+    asset_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
+):
+    """Удаляет оборудование. События удаляются каскадно; пункты инвентаризации отвязываются (asset_id=NULL)."""
+    asset = await asset_repo.get_asset_by_id(db, asset_id)
+    if not asset:
+        raise HTTPException(404, "Asset not found")
+    await service_delete_asset(db, asset)
+    await db.commit()
+    return RedirectResponse(url="/assets", status_code=302)
