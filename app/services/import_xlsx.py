@@ -1,11 +1,12 @@
 """
 Импорт оборудования из Excel. Первая строка — заголовки.
-Поддерживаются заголовки: Название, Модель, Тип техники, Серийный номер, Расположение,
-Статус, Категория, Описание, Организация, Пользователь (кто использует).
-Можно подогнать старую инвентарку: переименуйте столбцы в первый ряд под эти названия.
+Поддерживаются: название, модель, тип техники, серийный номер, расположение, статус,
+категория, описание, организация, пользователь; плюс технические поля: CPU, ОЗУ, тип/объём диска,
+IP адрес, мат. плата, ОС, блок питания, диагональ экрана/монитора, разрешение, юниты (U), дата выпуска.
 """
 from __future__ import annotations
 
+from datetime import date, datetime
 from io import BytesIO
 from typing import Any
 
@@ -25,6 +26,19 @@ IMPORT_HEADERS = [
     "Описание",
     "Организация",
     "Пользователь (кто использует)",
+    "CPU",
+    "ОЗУ",
+    "Тип диска",
+    "Объём диска",
+    "IP адрес",
+    "Мат. плата",
+    "ОС",
+    "Блок питания",
+    "Диагональ экрана",
+    "Разрешение экрана",
+    "Диагональ монитора",
+    "Юниты (U)",
+    "Дата выпуска",
 ]
 
 # Варианты названий столбцов (старые инвентарки могут называть иначе)
@@ -52,6 +66,30 @@ HEADER_ALIASES = {
     "пользователь": "Пользователь (кто использует)",
     "ответственный": "Пользователь (кто использует)",
     "фio": "Пользователь (кто использует)",
+    "cpu": "CPU",
+    "процессор": "CPU",
+    "озу": "ОЗУ",
+    "ram": "ОЗУ",
+    "память": "ОЗУ",
+    "тип диска": "Тип диска",
+    "объём диска": "Объём диска",
+    "диск": "Тип диска",
+    "ip адрес": "IP адрес",
+    "ip": "IP адрес",
+    "сетевая карта": "IP адрес",
+    "мат. плата": "Мат. плата",
+    "материнская плата": "Мат. плата",
+    "ос": "ОС",
+    "блок питания": "Блок питания",
+    "диагональ экрана": "Диагональ экрана",
+    "разрешение экрана": "Разрешение экрана",
+    "разрешение": "Разрешение экрана",
+    "диагональ монитора": "Диагональ монитора",
+    "юниты (u)": "Юниты (U)",
+    "юниты": "Юниты (U)",
+    "u": "Юниты (U)",
+    "дата выпуска": "Дата выпуска",
+    "дата производства": "Дата выпуска",
 }
 
 # Значения статуса в файле -> AssetStatus
@@ -112,6 +150,29 @@ def _map_header(raw: str) -> str | None:
         return None
     lower = raw.lower().strip()
     return HEADER_ALIASES.get(lower) or (raw if raw in IMPORT_HEADERS else None)
+
+
+def _parse_date(s: str) -> date | None:
+    """Парсит дату из строки: YYYY-MM-DD или DD.MM.YYYY."""
+    s = (s or "").strip()
+    if not s:
+        return None
+    for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _parse_int(s: str) -> int | None:
+    s = (s or "").strip()
+    if not s:
+        return None
+    try:
+        return int(s)
+    except ValueError:
+        return None
 
 
 def build_import_template_xlsx() -> BytesIO:
@@ -196,6 +257,19 @@ def parse_import_xlsx(content: bytes) -> tuple[list[dict[str, Any]], list[str]]:
             "description": row_data.get("Описание", "") or None,
             "company_name": row_data.get("Организация", "").strip() or None,
             "current_user": row_data.get("Пользователь (кто использует)", "") or None,
+            "cpu": row_data.get("CPU", "") or None,
+            "ram": row_data.get("ОЗУ", "") or None,
+            "disk1_type": row_data.get("Тип диска", "") or None,
+            "disk1_capacity": row_data.get("Объём диска", "") or None,
+            "network_card": row_data.get("IP адрес", "") or None,
+            "motherboard": row_data.get("Мат. плата", "") or None,
+            "os": row_data.get("ОС", "") or None,
+            "power_supply": row_data.get("Блок питания", "") or None,
+            "screen_diagonal": row_data.get("Диагональ экрана", "") or None,
+            "screen_resolution": row_data.get("Разрешение экрана", "") or None,
+            "monitor_diagonal": row_data.get("Диагональ монитора", "") or None,
+            "rack_units": _parse_int(row_data.get("Юниты (U)", "")),
+            "manufacture_date": _parse_date(row_data.get("Дата выпуска", "")),
         })
 
     return rows_out, errors

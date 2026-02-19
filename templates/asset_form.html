@@ -96,7 +96,7 @@
             <input type="text" name="disk1_capacity" class="form-control" value="{{ asset.disk1_capacity if asset and asset.disk1_capacity else '' }}" placeholder="например 512 ГБ">
         </div>
         <div class="col-md-6 mb-3">
-            <label class="form-label">Сетевая карта</label>
+            <label class="form-label">IP адрес</label>
             <input type="text" name="network_card" class="form-control" value="{{ asset.network_card if asset and asset.network_card else '' }}">
         </div>
         <div class="col-md-6 mb-3">
@@ -264,12 +264,12 @@
   }
 
   function addRow(data) {
-    data = data || { label: 'Сетевая карта 1', type: 'network', ip: '' };
+    data = data || { label: 'IP 1', type: 'network', ip: '' };
     var row = document.createElement('div');
     row.className = 'network-interface-row input-group input-group-sm mb-2';
     row.innerHTML =
-      '<input type="text" class="form-control ni-label" placeholder="Название (напр. Сетевая карта 1, OOB)" value="' + (data.label || '').replace(/"/g, '&quot;') + '" style="max-width:200px;">' +
-      '<select class="form-select ni-type" style="max-width:140px;"><option value="network"' + (data.type === 'network' ? ' selected' : '') + '>Сетевая карта</option><option value="oob"' + (data.type === 'oob' ? ' selected' : '') + '>OOB</option></select>' +
+      '<input type="text" class="form-control ni-label" placeholder="Название (напр. IP 1, OOB)" value="' + (data.label || '').replace(/"/g, '&quot;') + '" style="max-width:200px;">' +
+      '<select class="form-select ni-type" style="max-width:140px;"><option value="network"' + (data.type === 'network' ? ' selected' : '') + '>IP</option><option value="oob"' + (data.type === 'oob' ? ' selected' : '') + '>OOB</option></select>' +
       '<input type="text" class="form-control ni-ip" placeholder="IP-адрес" value="' + (data.ip || '').replace(/"/g, '&quot;') + '">' +
       '<button type="button" class="btn btn-outline-danger">×</button>';
     row.querySelector('button').addEventListener('click', function() { row.remove(); syncHidden(); });
@@ -281,7 +281,7 @@
   addBtn.addEventListener('click', function() {
     var rows = container.querySelectorAll('.network-interface-row');
     var n = rows.length + 1;
-    addRow({ label: 'Сетевая карта ' + n, type: 'network', ip: '' });
+    addRow({ label: 'IP ' + n, type: 'network', ip: '' });
   });
   initialList.forEach(function(item) { addRow(item); });
   if (initialList.length === 0) syncHidden();

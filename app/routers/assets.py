@@ -225,6 +225,19 @@ async def assets_import_upload(
                 "description": r.get("description"),
                 "company_id": company_id,
                 "current_user": r.get("current_user"),
+                "cpu": r.get("cpu"),
+                "ram": r.get("ram"),
+                "disk1_type": r.get("disk1_type"),
+                "disk1_capacity": r.get("disk1_capacity"),
+                "network_card": r.get("network_card"),
+                "motherboard": r.get("motherboard"),
+                "os": r.get("os"),
+                "power_supply": r.get("power_supply"),
+                "screen_diagonal": r.get("screen_diagonal"),
+                "screen_resolution": r.get("screen_resolution"),
+                "monitor_diagonal": r.get("monitor_diagonal"),
+                "rack_units": r.get("rack_units"),
+                "manufacture_date": r.get("manufacture_date"),
             }
             await service_create_asset(db, data, current_user.id, event_description="Импорт из Excel")
             imported += 1

@@ -111,7 +111,7 @@ ASSET_FIELD_LABELS = {
     "ram": "ОЗУ",
     "disk1_type": "Тип диска",
     "disk1_capacity": "Объём диска",
-    "network_card": "Сетевая карта",
+    "network_card": "IP адрес",
     "motherboard": "Материнская плата",
     "screen_diagonal": "Диагональ экрана",
     "screen_resolution": "Разрешение экрана",
@@ -130,7 +130,7 @@ EXTRA_COMPONENT_TYPES = [
     {"value": "cpu", "label": "Процессор"},
     {"value": "ram", "label": "ОЗУ"},
     {"value": "disk", "label": "Диск"},
-    {"value": "network_card", "label": "Сетевая карта"},
+    {"value": "network_card", "label": "IP адрес"},
     {"value": "other", "label": "Прочее"},
 ]
 

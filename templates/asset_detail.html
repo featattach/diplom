@@ -118,7 +118,7 @@
                     {% for ni in network_interfaces_list %}
                     <tr>
                         <td>{{ ni.label }}</td>
-                        <td><span class="badge bg-light text-dark">{{ 'OOB' if ni.type == 'oob' else 'Сетевая карта' }}</span></td>
+                        <td><span class="badge bg-light text-dark">{{ 'OOB' if ni.type == 'oob' else 'IP' }}</span></td>
                         <td><code>{{ ni.ip or '—' }}</code></td>
                     </tr>
                     {% endfor %}
@@ -144,7 +144,7 @@
             <dt class="col-sm-3 text-muted">ОЗУ</dt><dd class="col-sm-9">{{ asset.ram or '—' }}</dd>
             <dt class="col-sm-3 text-muted">Диск</dt><dd class="col-sm-9">{{ (asset.disk1_type or '') + (' ' + asset.disk1_capacity if asset.disk1_capacity else '') or '—' }}</dd>
             {% endif %}
-            {% if asset.network_card %}<dt class="col-sm-3 text-muted">Сетевая карта</dt><dd class="col-sm-9">{{ asset.network_card }}</dd>{% endif %}
+            {% if asset.network_card %}<dt class="col-sm-3 text-muted">IP адрес</dt><dd class="col-sm-9">{{ asset.network_card }}</dd>{% endif %}
             {% if asset.motherboard %}<dt class="col-sm-3 text-muted">Материнская плата</dt><dd class="col-sm-9">{{ asset.motherboard }}</dd>{% endif %}
             {% if asset.screen_diagonal or asset.screen_resolution %}
             <dt class="col-sm-3 text-muted">Экран</dt><dd class="col-sm-9">{{ asset.screen_diagonal or '—' }} {{ asset.screen_resolution or '' }}</dd>
