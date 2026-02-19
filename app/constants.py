@@ -29,6 +29,7 @@ EVENT_TYPE_LABELS = {
     "returned": "Возврат",
     "maintenance": "Обслуживание",
     "retired": "Списание",
+    "deleted": "Удалён",
     "other": "Прочее",
 }
 EVENT_TYPE_OPTIONS = [{"value": k, "label": v} for k, v in EVENT_TYPE_LABELS.items()]

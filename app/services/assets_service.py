@@ -1,9 +1,10 @@
 """
 Бизнес-логика активов: создание, обновление с обязательной записью события (AssetEvent).
-Роутер передаёт подготовленные данные; сервис выполняет сохранение и создание событий.
+Мягкое удаление: deleted_at + событие «Удалён». Роутер передаёт подготовленные данные.
 """
 import json
 import logging
+from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -89,11 +90,21 @@ async def add_asset_event(
     logger.info("asset_event asset_id=%s event_type=%s created_by_id=%s", asset_id, event_type.value, created_by_id)
 
 
-async def delete_asset(db: AsyncSession, asset: Asset) -> None:
+async def delete_asset(db: AsyncSession, asset: Asset, deleted_by_id: int) -> None:
     """
-    Удаляет актив из БД. События (AssetEvent) удаляются каскадно.
-    Пункты инвентаризации (InventoryItem) получают asset_id=NULL (SET NULL).
+    Мягкое удаление: выставляет deleted_at и создаёт событие «Удалён».
+    Объект остаётся в БД, в списках скрыт (фильтр deleted_at IS NULL), в истории видно событие.
     """
-    await db.delete(asset)
+    if asset.deleted_at:
+        raise ValueError("Объект уже удалён")
+    asset.deleted_at = datetime.now(timezone.utc)
     await db.flush()
-    logger.info("asset_deleted asset_id=%s name=%s", asset.id, getattr(asset, "name", ""))
+    event = AssetEvent(
+        asset_id=asset.id,
+        event_type=AssetEventType.deleted,
+        description="Оборудование удалено",
+        created_by_id=deleted_by_id,
+    )
+    db.add(event)
+    await db.flush()
+    logger.info("asset_deleted (soft) asset_id=%s name=%s deleted_by_id=%s", asset.id, getattr(asset, "name", ""), deleted_by_id)

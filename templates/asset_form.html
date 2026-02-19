@@ -151,13 +151,13 @@
     </div>
     <button type="submit" class="btn btn-primary">{% if asset %}Сохранить{% else %}Создать{% endif %}</button>
     <a href="{{ request.url_for('assets_list') }}" class="btn btn-outline-secondary">Отмена</a>
-    {% if asset %}
+    {% if asset and not asset.deleted_at %}
     <div class="ms-auto mt-3 pt-3 border-top">
-        <button type="button" class="btn btn-outline-danger" onclick="if(confirm('Удалить оборудование «{{ asset.name | e }}»? События по объекту будут удалены, пункты инвентаризации отвяжутся.')) { document.getElementById('assetDeleteForm').submit(); }">Удалить оборудование</button>
+        <button type="button" class="btn btn-outline-danger" onclick="if(confirm('Удалить оборудование «{{ asset.name | e }}»? Объект будет помечен как удалённый, в истории останется событие «Удалён».')) { document.getElementById('assetDeleteForm').submit(); }">Удалить оборудование</button>
     </div>
     {% endif %}
 </form>
-{% if asset %}
+{% if asset and not asset.deleted_at %}
 <form id="assetDeleteForm" method="post" action="{{ request.url_for('asset_delete_post', asset_id=asset.id) }}" class="d-none"></form>
 {% endif %}
 

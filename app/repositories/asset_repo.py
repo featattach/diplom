@@ -25,7 +25,7 @@ def _build_list_query(
     status_filter = None
     if status and status.strip() and status.strip() in ("active", "inactive", "maintenance", "retired"):
         status_filter = AssetStatus(status.strip())
-    q = select(Asset).options(selectinload(Asset.company))
+    q = select(Asset).options(selectinload(Asset.company)).where(Asset.deleted_at.is_(None))
     if sort == "oldest":
         q = q.order_by(Asset.created_at.asc(), Asset.id.asc())
     else:
@@ -91,9 +91,10 @@ async def get_asset_by_id_with_relations(
 
 
 async def get_distinct_locations(db: AsyncSession) -> list[str]:
-    """Список уникальных непустых расположений для фильтра."""
+    """Список уникальных непустых расположений для фильтра (без удалённых)."""
     result = await db.execute(
         select(Asset.location)
+        .where(Asset.deleted_at.is_(None))
         .where(Asset.location.isnot(None))
         .where(Asset.location != "")
         .distinct()
@@ -103,9 +104,12 @@ async def get_distinct_locations(db: AsyncSession) -> list[str]:
 
 
 async def get_existing_serial_numbers(db: AsyncSession) -> set[str]:
-    """Множество серийных номеров, уже существующих в БД."""
+    """Множество серийных номеров, уже существующих в БД (без удалённых)."""
     result = await db.execute(
-        select(Asset.serial_number).where(Asset.serial_number.isnot(None)).where(Asset.serial_number != "")
+        select(Asset.serial_number)
+        .where(Asset.deleted_at.is_(None))
+        .where(Asset.serial_number.isnot(None))
+        .where(Asset.serial_number != "")
     )
     return {r[0] for r in result.all()}
 
@@ -114,9 +118,10 @@ async def get_traffic_light_assets(
     db: AsyncSession,
     company_id: int | None = None,
 ) -> list[Asset]:
-    """Активы для отчёта «Светофор» (типы desktop, nettop, laptop, server), с company."""
+    """Активы для отчёта «Светофор» (типы desktop, nettop, laptop, server), с company, без удалённых."""
     q = (
         select(Asset)
+        .where(Asset.deleted_at.is_(None))
         .where(Asset.equipment_kind.in_(TRAFFIC_LIGHT_KINDS))
         .options(selectinload(Asset.company))
         .order_by(Asset.company_id, Asset.name)
@@ -128,20 +133,22 @@ async def get_traffic_light_assets(
 
 
 async def get_total_assets_count(db: AsyncSession) -> int:
-    """Общее количество активов."""
-    r = await db.execute(select(func.count(Asset.id)))
+    """Общее количество активов (без удалённых)."""
+    r = await db.execute(select(func.count(Asset.id)).where(Asset.deleted_at.is_(None)))
     return r.scalar() or 0
 
 
 async def get_asset_status_counts(db: AsyncSession) -> dict:
-    """Словарь статус -> количество активов (для отчётов/дашборда)."""
-    result = await db.execute(select(Asset.status, func.count(Asset.id)).group_by(Asset.status))
+    """Словарь статус -> количество активов (для отчётов/дашборда), без удалённых."""
+    result = await db.execute(
+        select(Asset.status, func.count(Asset.id)).where(Asset.deleted_at.is_(None)).group_by(Asset.status)
+    )
     return dict(result.all())
 
 
 async def get_all_assets_ordered_by_id(db: AsyncSession) -> list[Asset]:
-    """Все активы, упорядоченные по id (для дашборда, без eager load)."""
-    result = await db.execute(select(Asset).order_by(Asset.id))
+    """Все активы, упорядоченные по id (для дашборда, без удалённых)."""
+    result = await db.execute(select(Asset).where(Asset.deleted_at.is_(None)).order_by(Asset.id))
     return list(result.scalars().all())
 
 
@@ -149,16 +156,22 @@ async def get_company_asset_summary(
     db: AsyncSession, company_id: int
 ) -> dict:
     """Сводка по технике организации: total, status_counts, location_counts."""
-    total = (await db.execute(select(func.count(Asset.id)).where(Asset.company_id == company_id))).scalar() or 0
+    total = (
+        await db.execute(
+            select(func.count(Asset.id)).where(Asset.company_id == company_id).where(Asset.deleted_at.is_(None))
+        )
+    ).scalar() or 0
     by_status = await db.execute(
         select(Asset.status, func.count(Asset.id))
         .where(Asset.company_id == company_id)
+        .where(Asset.deleted_at.is_(None))
         .group_by(Asset.status)
     )
     status_counts = dict(by_status.all())
     by_location = await db.execute(
         select(Asset.location, func.count(Asset.id))
         .where(Asset.company_id == company_id)
+        .where(Asset.deleted_at.is_(None))
         .where(Asset.location.isnot(None))
         .where(Asset.location != "")
         .group_by(Asset.location)

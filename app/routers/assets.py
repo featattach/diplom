@@ -306,7 +306,7 @@ async def asset_detail(
             "asset": asset,
             "events": events,
             "is_inactive": is_asset_inactive(asset),
-            "event_type_options": EVENT_TYPE_OPTIONS,
+            "event_type_options": [o for o in EVENT_TYPE_OPTIONS if o.get("value") != "deleted"],
             "event_type_labels": EVENT_TYPE_LABELS,
             "equipment_kind_labels": EQUIPMENT_KIND_LABELS,
             "extra_components_list": extra_components_list,
@@ -576,6 +576,8 @@ async def asset_edit_form(
     asset = await asset_repo.get_asset_by_id(db, asset_id)
     if not asset:
         raise HTTPException(404, "Asset not found")
+    if asset.deleted_at:
+        return RedirectResponse(url=f"/assets/{asset_id}", status_code=302)
     companies = await reference_repo.get_companies_ordered(db)
     return templates.TemplateResponse(
         "asset_form.html",
@@ -635,6 +637,8 @@ async def asset_edit(
     asset = await asset_repo.get_asset_by_id(db, asset_id)
     if not asset:
         raise HTTPException(404, "Asset not found")
+    if asset.deleted_at:
+        raise HTTPException(400, "Редактирование удалённого объекта недоступно")
     data = _parse_asset_form(
         name, serial_number, asset_type, equipment_kind, model, location, status, description, last_seen_at,
         cpu, ram, disk1_type, disk1_capacity, network_card, motherboard,
@@ -657,10 +661,13 @@ async def asset_delete(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin, UserRole.user)),
 ):
-    """Удаляет оборудование. События удаляются каскадно; пункты инвентаризации отвязываются (asset_id=NULL)."""
+    """Мягкое удаление: помечает объект deleted_at и создаёт событие «Удалён». Объект остаётся в БД, из списков скрыт."""
     asset = await asset_repo.get_asset_by_id(db, asset_id)
     if not asset:
         raise HTTPException(404, "Asset not found")
-    await service_delete_asset(db, asset)
+    try:
+        await service_delete_asset(db, asset, current_user.id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     await db.commit()
     return RedirectResponse(url="/assets", status_code=302)

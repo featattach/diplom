@@ -23,6 +23,7 @@ class AssetEventType(str, enum.Enum):
     returned = "returned"
     maintenance = "maintenance"
     retired = "retired"
+    deleted = "deleted"  # мягкое удаление: объект помечен deleted_at, в истории — «Удалён»
     other = "other"
 
 
@@ -84,6 +85,7 @@ class Asset(Base):
     current_user: Mapped[str] = mapped_column(String(256), nullable=True)
     # Дата выпуска (для ПК, ноутбуков, серверов, неттопов — отчёт «Светофор»)
     manufacture_date: Mapped[date] = mapped_column(Date, nullable=True)
+    deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)  # мягкое удаление
 
     events: Mapped[list["AssetEvent"]] = relationship(
         "AssetEvent",

@@ -7,6 +7,11 @@
         <li class="breadcrumb-item active" aria-current="page">{{ asset.name }}</li>
     </ol>
 </nav>
+{% if asset.deleted_at %}
+<div class="alert alert-danger mb-3" role="alert">
+    <strong>Объект удалён</strong> {{ asset.deleted_at.strftime('%d.%m.%Y %H:%M') if asset.deleted_at else '' }}. Запись сохранена для истории.
+</div>
+{% endif %}
 <div class="asset-card-header d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
     <div>
         <h1 class="h3 mb-1">{{ asset.name }}{% if asset.serial_number %} <span class="text-muted fw-normal">({{ asset.serial_number }})</span>{% endif %}</h1>
@@ -16,7 +21,7 @@
         {% endif %}
     </div>
     <div class="d-flex gap-2">
-        {% if user.role.value in ['admin', 'user'] %}
+        {% if user.role.value in ['admin', 'user'] and not asset.deleted_at %}
         <a href="{{ request.url_for('asset_edit', asset_id=asset.id) }}" class="btn btn-primary">Внести изменения</a>
         {% endif %}
         <a href="{{ request.url_for('assets_list') }}" class="btn btn-outline-secondary">← К списку</a>
@@ -191,7 +196,7 @@
     </div>
 </div>
 
-{% if user.role.value in ['admin', 'user'] %}
+{% if user.role.value in ['admin', 'user'] and not asset.deleted_at %}
 <div class="card border-0 shadow-sm mb-4">
     <div class="card-header bg-light">
         <h2 class="h6 mb-0">Добавить событие</h2>
@@ -233,9 +238,9 @@
                 </thead>
                 <tbody>
                     {% for e in events %}
-                    <tr>
+                    <tr{% if e.event_type.value == 'deleted' %} class="table-danger"{% endif %}>
                         <td>{{ e.created_at.strftime('%Y-%m-%d %H:%M') if e.created_at else '—' }}</td>
-                        <td><span class="badge bg-info">{{ event_type_labels.get(e.event_type.value, e.event_type.value) if event_type_labels else e.event_type.value }}</span></td>
+                        <td><span class="badge {% if e.event_type.value == 'deleted' %}bg-danger{% else %}bg-info{% endif %}">{{ event_type_labels.get(e.event_type.value, e.event_type.value) if event_type_labels else e.event_type.value }}</span></td>
                         <td>{{ e.description or '—' }}</td>
                         <td>
                             {% if e.changes_list %}
