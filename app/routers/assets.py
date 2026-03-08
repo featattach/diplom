@@ -95,6 +95,215 @@ async def assets_list(
     )
 
 
+@router.get("/assets/advanced-search", name="assets_advanced_search", include_in_schema=False)
+async def assets_advanced_search(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_user),
+    name: str | None = Query(None),
+    status: str | None = Query(None),
+    equipment_kind: str | None = Query(None),
+    location: str | None = Query(None),
+    company_id: str | None = Query(None),
+    assigned_user: str | None = Query(None, description="Пользователь (кто использует)"),
+    cpu: str | None = Query(None),
+    ram: str | None = Query(None),
+    disk1_type: str | None = Query(None),
+    disk1_capacity: str | None = Query(None),
+    network_card: str | None = Query(None),
+    motherboard: str | None = Query(None),
+    os: str | None = Query(None),
+    description: str | None = Query(None),
+    screen_diagonal: str | None = Query(None),
+    screen_resolution: str | None = Query(None),
+    monitor_diagonal: str | None = Query(None),
+    power_supply: str | None = Query(None),
+    rack_units: str | None = Query(None),
+    manufacture_from: str | None = Query(None, description="Дата выпуска с (YYYY-MM-DD)"),
+    manufacture_to: str | None = Query(None, description="Дата выпуска по (YYYY-MM-DD)"),
+):
+    from datetime import date as _date
+
+    md_from = None
+    md_to = None
+    if manufacture_from:
+        try:
+            md_from = _date.fromisoformat(manufacture_from)
+        except ValueError:
+            md_from = None
+    if manufacture_to:
+        try:
+            md_to = _date.fromisoformat(manufacture_to)
+        except ValueError:
+            md_to = None
+    assets = await asset_repo.advanced_search_assets(
+        db,
+        name=name,
+        status=status,
+        equipment_kind=equipment_kind,
+        location=location,
+        company_id=company_id,
+        current_user=assigned_user,
+        cpu=cpu,
+        ram=ram,
+        disk1_type=disk1_type,
+        disk1_capacity=disk1_capacity,
+        network_card=network_card,
+        motherboard=motherboard,
+        os=os,
+        description=description,
+        screen_diagonal=screen_diagonal,
+        screen_resolution=screen_resolution,
+        monitor_diagonal=monitor_diagonal,
+        power_supply=power_supply,
+        rack_units=rack_units,
+        manufacture_date_from=md_from,
+        manufacture_date_to=md_to,
+    )
+    companies = await reference_repo.get_companies_ordered(db)
+    location_choices = await asset_repo.get_distinct_locations(db)
+    qp = {
+        k: v
+        for k, v in [
+            ("name", name),
+            ("status", status),
+            ("equipment_kind", equipment_kind),
+            ("location", location),
+            ("company_id", company_id),
+            ("assigned_user", assigned_user),
+            ("cpu", cpu),
+            ("ram", ram),
+            ("disk1_type", disk1_type),
+            ("disk1_capacity", disk1_capacity),
+            ("network_card", network_card),
+            ("motherboard", motherboard),
+            ("os", os),
+            ("description", description),
+            ("screen_diagonal", screen_diagonal),
+            ("screen_resolution", screen_resolution),
+            ("monitor_diagonal", monitor_diagonal),
+            ("power_supply", power_supply),
+            ("rack_units", rack_units),
+            ("manufacture_from", manufacture_from),
+            ("manufacture_to", manufacture_to),
+        ]
+        if v is not None and v != ""
+    }
+    base_export_url = request.url_for("assets_advanced_search_export")
+    export_url = str(base_export_url.include_query_params(**qp)) if qp else str(base_export_url)
+    return templates.TemplateResponse(
+        "assets_advanced_search.html",
+        {
+            "request": request,
+            "user": current_user,
+            "assets": assets,
+            "companies": companies,
+            "location_choices": location_choices,
+            "export_url": export_url,
+            "filters": {
+                "name": name or "",
+                "status": status or "",
+                "equipment_kind": equipment_kind or "",
+                "location": location or "",
+                "company_id": company_id or "",
+                "assigned_user": assigned_user or "",
+                "cpu": cpu or "",
+                "ram": ram or "",
+                "disk1_type": disk1_type or "",
+                "disk1_capacity": disk1_capacity or "",
+                "network_card": network_card or "",
+                "motherboard": motherboard or "",
+                "os": os or "",
+                "description": description or "",
+                "screen_diagonal": screen_diagonal or "",
+                "screen_resolution": screen_resolution or "",
+                "monitor_diagonal": monitor_diagonal or "",
+                "power_supply": power_supply or "",
+                "rack_units": rack_units or "",
+                "manufacture_from": manufacture_from or "",
+                "manufacture_to": manufacture_to or "",
+            },
+            "status_choices": AssetStatus,
+            "status_labels": STATUS_LABELS,
+            "equipment_kind_choices": EQUIPMENT_KIND_CHOICES,
+            "equipment_kind_labels": EQUIPMENT_KIND_LABELS,
+            "os_options": OS_OPTIONS,
+        },
+    )
+
+
+@router.get("/assets/advanced-search/export", name="assets_advanced_search_export", include_in_schema=False)
+async def assets_advanced_search_export(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_user),
+    name: str | None = Query(None),
+    status: str | None = Query(None),
+    equipment_kind: str | None = Query(None),
+    location: str | None = Query(None),
+    company_id: str | None = Query(None),
+    assigned_user: str | None = Query(None),
+    cpu: str | None = Query(None),
+    ram: str | None = Query(None),
+    disk1_type: str | None = Query(None),
+    disk1_capacity: str | None = Query(None),
+    network_card: str | None = Query(None),
+    motherboard: str | None = Query(None),
+    os: str | None = Query(None),
+    description: str | None = Query(None),
+    screen_diagonal: str | None = Query(None),
+    screen_resolution: str | None = Query(None),
+    monitor_diagonal: str | None = Query(None),
+    power_supply: str | None = Query(None),
+    rack_units: str | None = Query(None),
+    manufacture_from: str | None = Query(None),
+    manufacture_to: str | None = Query(None),
+):
+    from datetime import date as _date
+
+    md_from = None
+    md_to = None
+    if manufacture_from:
+        try:
+            md_from = _date.fromisoformat(manufacture_from)
+        except ValueError:
+            md_from = None
+    if manufacture_to:
+        try:
+            md_to = _date.fromisoformat(manufacture_to)
+        except ValueError:
+            md_to = None
+    assets = await asset_repo.advanced_search_assets(
+        db,
+        name=name,
+        status=status,
+        equipment_kind=equipment_kind,
+        location=location,
+        company_id=company_id,
+        current_user=assigned_user,
+        cpu=cpu,
+        ram=ram,
+        disk1_type=disk1_type,
+        disk1_capacity=disk1_capacity,
+        network_card=network_card,
+        motherboard=motherboard,
+        os=os,
+        description=description,
+        screen_diagonal=screen_diagonal,
+        screen_resolution=screen_resolution,
+        monitor_diagonal=monitor_diagonal,
+        power_supply=power_supply,
+        rack_units=rack_units,
+        manufacture_date_from=md_from,
+        manufacture_date_to=md_to,
+    )
+    buf = export_assets_xlsx(assets)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=assets_advanced_search.xlsx"},
+    )
+
+
 @router.get("/assets/export", name="assets_export", include_in_schema=False)
 async def assets_export(
     db: AsyncSession = Depends(get_db),

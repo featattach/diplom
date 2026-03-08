@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}Расширенный поиск — Система учёта оборудования{% endblock %}
+{% block content %}
+<style>
+.advanced-search .filter-group-tech { background: rgba(13, 110, 253, 0.1); border-radius: 6px; padding: 0.4rem 0.5rem; border-left: 3px solid #0d6efd; }
+.advanced-search .filter-group-select { background: rgba(25, 135, 84, 0.1); border-radius: 6px; padding: 0.4rem 0.5rem; border-left: 3px solid #198754; }
+</style>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="card-title">Расширенный поиск оборудования</h1>
+    <a href="{{ request.url_for('assets_list') }}" class="btn btn-outline-secondary">К простому списку</a>
+</div>
+<p class="card-subtitle mb-3">Можно комбинировать фильтры по основным и техническим полям (CPU, ОЗУ, IP адрес, ОС и т.д.). Все поля необязательны.</p>
+
+<form method="get" class="row g-2 g-md-3 mb-4 advanced-search">
+    <div class="col-12 col-md-4">
+        <label class="form-label small text-muted mb-1">Название</label>
+        <input type="text" name="name" class="form-control" placeholder="Часть названия" value="{{ filters.name }}">
+    </div>
+    <div class="col-6 col-md-2 filter-group-select">
+        <label class="form-label small text-muted mb-1">Статус</label>
+        <select name="status" class="form-select">
+            <option value="">Все</option>
+            {% for s in status_choices %}
+            <option value="{{ s.value }}" {% if filters.status == s.value %}selected{% endif %}>{{ status_labels[s] }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-6 col-md-3 filter-group-select">
+        <label class="form-label small text-muted mb-1">Тип техники</label>
+        <select name="equipment_kind" class="form-select">
+            <option value="">Все</option>
+            {% for k in equipment_kind_choices %}
+            <option value="{{ k.value }}" {% if filters.equipment_kind == k.value %}selected{% endif %}>{{ k.label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-12 col-md-3 filter-group-select">
+        <label class="form-label small text-muted mb-1">Организация</label>
+        <select name="company_id" class="form-select">
+            <option value="">Все</option>
+            {% for c in companies %}
+            <option value="{{ c.id }}" {% if filters.company_id == c.id|string %}selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-12 col-md-3">
+        <label class="form-label small text-muted mb-1">Пользователь (кто использует)</label>
+        <input type="text" name="assigned_user" class="form-control" placeholder="ФИО или часть" value="{{ filters.assigned_user }}">
+    </div>
+
+    <div class="col-12 col-md-4">
+        <label class="form-label small text-muted mb-1">Расположение</label>
+        <input type="text" name="location" class="form-control" placeholder="Часть расположения" value="{{ filters.location }}">
+    </div>
+    <div class="col-12 col-md-4 filter-group-tech">
+        <label class="form-label small text-muted mb-1">CPU</label>
+        <input type="text" name="cpu" class="form-control" placeholder="Например: i5, Xeon" value="{{ filters.cpu }}">
+    </div>
+    <div class="col-6 col-md-2 filter-group-tech">
+        <label class="form-label small text-muted mb-1">ОЗУ</label>
+        <input type="text" name="ram" class="form-control" placeholder="Напр. 8 ГБ" value="{{ filters.ram }}">
+    </div>
+    <div class="col-6 col-md-2 filter-group-tech">
+        <label class="form-label small text-muted mb-1">Тип диска</label>
+        <input type="text" name="disk1_type" class="form-control" placeholder="SSD / HDD" value="{{ filters.disk1_type }}">
+    </div>
+
+    <div class="col-6 col-md-2 filter-group-tech">
+        <label class="form-label small text-muted mb-1">Объём диска</label>
+        <input type="text" name="disk1_capacity" class="form-control" placeholder="256 ГБ" value="{{ filters.disk1_capacity }}">
+    </div>
+    <div class="col-6 col-md-3 filter-group-tech">
+        <label class="form-label small text-muted mb-1">IP адрес</label>
+        <input type="text" name="network_card" class="form-control" placeholder="Часть IP" value="{{ filters.network_card }}">
+    </div>
+    <div class="col-12 col-md-3 filter-group-tech">
+        <label class="form-label small text-muted mb-1">Мат. плата</label>
+        <input type="text" name="motherboard" class="form-control" placeholder="Часть названия" value="{{ filters.motherboard }}">
+    </div>
+    <div class="col-12 col-md-4 filter-group-select">
+        <label class="form-label small text-muted mb-1">ОС</label>
+        <select name="os" class="form-select">
+            <option value="">Все</option>
+            {% for o in os_options %}
+            <option value="{{ o.value }}" {% if filters.os == o.value %}selected{% endif %}>{{ o.label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="col-6 col-md-2 filter-group-tech">
+        <label class="form-label small text-muted mb-1">Диагональ экрана</label>
+        <input type="text" name="screen_diagonal" class="form-control" placeholder="15.6&quot;, 24&quot;" value="{{ filters.screen_diagonal }}">
+    </div>
+    <div class="col-6 col-md-3 filter-group-tech">
+        <label class="form-label small text-muted mb-1">Разрешение экрана</label>
+        <input type="text" name="screen_resolution" class="form-control" placeholder="1920×1080, Full HD" value="{{ filters.screen_resolution }}">
+    </div>
+    <div class="col-6 col-md-2 filter-group-tech">
+        <label class="form-label small text-muted mb-1">Диагональ монитора</label>
+        <input type="text" name="monitor_diagonal" class="form-control" placeholder="27&quot;" value="{{ filters.monitor_diagonal }}">
+    </div>
+    <div class="col-6 col-md-2 filter-group-tech">
+        <label class="form-label small text-muted mb-1">Блок питания</label>
+        <input type="text" name="power_supply" class="form-control" placeholder="Часть названия" value="{{ filters.power_supply }}">
+    </div>
+    <div class="col-6 col-md-1 filter-group-tech">
+        <label class="form-label small text-muted mb-1">Юниты (U)</label>
+        <input type="number" name="rack_units" class="form-control" placeholder="1, 2" min="1" value="{{ filters.rack_units }}">
+    </div>
+
+    <div class="col-12 col-md-4">
+        <label class="form-label small text-muted mb-1">Описание (поиск по тексту)</label>
+        <input type="text" name="description" class="form-control" placeholder="Фрагмент описания" value="{{ filters.description }}">
+    </div>
+    <div class="col-6 col-md-2">
+        <label class="form-label small text-muted mb-1">Дата выпуска с</label>
+        <input type="date" name="manufacture_from" class="form-control" value="{{ filters.manufacture_from }}">
+    </div>
+    <div class="col-6 col-md-2">
+        <label class="form-label small text-muted mb-1">Дата выпуска по</label>
+        <input type="date" name="manufacture_to" class="form-control" value="{{ filters.manufacture_to }}">
+    </div>
+
+    <div class="col-12 col-md-2 align-self-end">
+        <button type="submit" class="btn btn-primary w-100">Найти</button>
+    </div>
+    <div class="col-12 col-md-2 align-self-end">
+        <a href="{{ export_url }}" class="btn btn-success w-100">Экспорт в Excel</a>
+    </div>
+</form>
+
+<div class="table-responsive">
+    <table class="table table-hover align-middle">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Название</th>
+                <th class="d-none d-sm-table-cell">Модель</th>
+                <th class="d-none d-md-table-cell">Тип техники</th>
+                <th class="d-none d-md-table-cell">Организация</th>
+                <th class="d-none d-lg-table-cell">CPU</th>
+                <th class="d-none d-lg-table-cell">ОЗУ</th>
+                <th class="d-none d-xl-table-cell">IP адрес</th>
+                <th>Статус</th>
+                <th class="d-none d-md-table-cell">Дата выпуска</th>
+                <th>Действие</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for asset in assets %}
+            <tr>
+                <td>{{ asset.id }}</td>
+                <td><a href="{{ request.url_for('asset_detail', asset_id=asset.id) }}">{{ asset.name }}</a></td>
+                <td class="d-none d-sm-table-cell">{{ asset.model or '—' }}</td>
+                <td class="d-none d-md-table-cell">{{ equipment_kind_labels.get(asset.equipment_kind.value if asset.equipment_kind else '', '') if asset.equipment_kind else '—' }}</td>
+                <td class="d-none d-md-table-cell">{% if asset.company %}<a href="{{ request.url_for('company_detail', company_id=asset.company.id) }}">{{ asset.company.name }}</a>{% else %}—{% endif %}</td>
+                <td class="d-none d-lg-table-cell">{{ asset.cpu or '—' }}</td>
+                <td class="d-none d-lg-table-cell">{{ asset.ram or '—' }}</td>
+                <td class="d-none d-xl-table-cell">{{ asset.network_card or '—' }}</td>
+                <td><span class="badge bg-secondary">{{ status_labels[asset.status] }}</span></td>
+                <td class="d-none d-md-table-cell">{{ asset.manufacture_date.strftime('%d.%m.%Y') if asset.manufacture_date else '—' }}</td>
+                <td><a href="{{ request.url_for('asset_detail', asset_id=asset.id) }}" class="btn btn-sm btn-outline-primary">Открыть</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="11" class="text-muted">Нет записей по заданным условиям</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+

@@ -67,6 +67,94 @@ async def get_assets_list(
     return list(result.scalars().all())
 
 
+async def advanced_search_assets(
+    db: AsyncSession,
+    name: str | None = None,
+    status: str | None = None,
+    equipment_kind: str | None = None,
+    location: str | None = None,
+    company_id: str | None = None,
+    current_user: str | None = None,
+    cpu: str | None = None,
+    ram: str | None = None,
+    disk1_type: str | None = None,
+    disk1_capacity: str | None = None,
+    network_card: str | None = None,
+    motherboard: str | None = None,
+    os: str | None = None,
+    description: str | None = None,
+    screen_diagonal: str | None = None,
+    screen_resolution: str | None = None,
+    monitor_diagonal: str | None = None,
+    power_supply: str | None = None,
+    rack_units: str | None = None,
+    manufacture_date_from=None,
+    manufacture_date_to=None,
+) -> list[Asset]:
+    """
+    Расширенный поиск по оборудованию: позволяет комбинировать базовые фильтры
+    (название, статус, тип техники, расположение, организация) с техническими полями.
+    """
+    status_filter = None
+    if status and status.strip() and status.strip() in ("active", "inactive", "maintenance", "retired"):
+        status_filter = AssetStatus(status.strip())
+    q = select(Asset).options(selectinload(Asset.company)).where(Asset.deleted_at.is_(None))
+    if name:
+        q = q.where(Asset.name.ilike(f"%{name}%"))
+    if status_filter is not None:
+        q = q.where(Asset.status == status_filter)
+    if equipment_kind:
+        try:
+            q = q.where(Asset.equipment_kind == EquipmentKind(equipment_kind))
+        except ValueError:
+            pass
+    if location and location.strip():
+        q = q.where(Asset.location.ilike(f"%{location.strip()}%"))
+    if company_id and company_id.strip():
+        try:
+            q = q.where(Asset.company_id == int(company_id.strip()))
+        except ValueError:
+            pass
+    if current_user and current_user.strip():
+        q = q.where(Asset.current_user.ilike(f"%{current_user.strip()}%"))
+    if cpu and cpu.strip():
+        q = q.where(Asset.cpu.ilike(f"%{cpu.strip()}%"))
+    if ram and ram.strip():
+        q = q.where(Asset.ram.ilike(f"%{ram.strip()}%"))
+    if disk1_type and disk1_type.strip():
+        q = q.where(Asset.disk1_type.ilike(f"%{disk1_type.strip()}%"))
+    if disk1_capacity and disk1_capacity.strip():
+        q = q.where(Asset.disk1_capacity.ilike(f"%{disk1_capacity.strip()}%"))
+    if network_card and network_card.strip():
+        q = q.where(Asset.network_card.ilike(f"%{network_card.strip()}%"))
+    if motherboard and motherboard.strip():
+        q = q.where(Asset.motherboard.ilike(f"%{motherboard.strip()}%"))
+    if os and os.strip():
+        q = q.where(Asset.os == os.strip())
+    if description and description.strip():
+        q = q.where(Asset.description.ilike(f"%{description.strip()}%"))
+    if screen_diagonal and screen_diagonal.strip():
+        q = q.where(Asset.screen_diagonal.ilike(f"%{screen_diagonal.strip()}%"))
+    if screen_resolution and screen_resolution.strip():
+        q = q.where(Asset.screen_resolution.ilike(f"%{screen_resolution.strip()}%"))
+    if monitor_diagonal and monitor_diagonal.strip():
+        q = q.where(Asset.monitor_diagonal.ilike(f"%{monitor_diagonal.strip()}%"))
+    if power_supply and power_supply.strip():
+        q = q.where(Asset.power_supply.ilike(f"%{power_supply.strip()}%"))
+    if rack_units is not None and str(rack_units).strip() != "":
+        try:
+            q = q.where(Asset.rack_units == int(rack_units))
+        except ValueError:
+            pass
+    if manufacture_date_from is not None:
+        q = q.where(Asset.manufacture_date >= manufacture_date_from)
+    if manufacture_date_to is not None:
+        q = q.where(Asset.manufacture_date <= manufacture_date_to)
+    q = q.order_by(Asset.created_at.desc(), Asset.id.desc())
+    result = await db.execute(q)
+    return list(result.scalars().all())
+
+
 async def get_asset_by_id(db: AsyncSession, asset_id: int) -> Asset | None:
     """Актив по id без связей."""
     result = await db.execute(select(Asset).where(Asset.id == asset_id))
