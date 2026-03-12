@@ -34,3 +34,9 @@ QR_DIR = BASE_DIR / "data" / "qrcodes"
 DATA_DIR = BASE_DIR / "data"
 BACKUP_DIR = BASE_DIR / "data" / "backups"
 DB_PATH = DATA_DIR / "app.db"
+
+# Часовой пояс для отображения дат/времени в интерфейсе (история изменений, перемещения и т.д.)
+# Значения в БД хранятся в UTC; при выводе конвертируются в эту зону.
+# На Windows без пакета tzdata используется смещение DISPLAY_UTC_OFFSET_HOURS.
+DISPLAY_TIMEZONE = os.getenv("DISPLAY_TIMEZONE", "Europe/Moscow")
+DISPLAY_UTC_OFFSET_HOURS = int(os.getenv("DISPLAY_UTC_OFFSET_HOURS", "3"))  # Москва UTC+3

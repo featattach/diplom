@@ -9,7 +9,7 @@
 </nav>
 {% if asset.deleted_at %}
 <div class="alert alert-danger mb-3" role="alert">
-    <strong>Объект удалён</strong> {{ asset.deleted_at.strftime('%d.%m.%Y %H:%M') if asset.deleted_at else '' }}. Запись сохранена для истории.
+    <strong>Объект удалён</strong> {{ asset.deleted_at | format_local_time('%d.%m.%Y %H:%M') or '' }}. Запись сохранена для истории.
 </div>
 {% endif %}
 <div class="asset-card-header d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
@@ -36,7 +36,7 @@
 <div class="alert alert-success mb-3">Оборудование отмечено как отсканировано (найдено) в этой кампании.</div>
 {% endif %}
 {% if inventory_item and inventory_item.found %}
-<p class="text-success mb-3"><span class="badge bg-success">Отсканировано</span> {{ inventory_item.found_at.strftime('%Y-%m-%d %H:%M') if inventory_item.found_at else '' }}</p>
+<p class="text-success mb-3"><span class="badge bg-success">Отсканировано</span> {{ inventory_item.found_at | format_local_time if inventory_item.found_at else '' }}</p>
 {% else %}
 <form method="post" action="{{ request.url_for('asset_mark_inventory_found', asset_id=asset.id) }}" class="mb-3">
     <input type="hidden" name="campaign_id" value="{{ inventory_campaign.id }}">
@@ -92,7 +92,7 @@
             <dt class="col-sm-3 text-muted">Серийный номер</dt><dd class="col-sm-9">{{ asset.serial_number or '—' }}</dd>
             <dt class="col-sm-3 text-muted">Категория</dt><dd class="col-sm-9">{{ asset.asset_type or '—' }}</dd>
             <dt class="col-sm-3 text-muted">Организация</dt><dd class="col-sm-9">{% if asset.company %}<a href="{{ request.url_for('company_detail', company_id=asset.company.id) }}">{{ asset.company.name }}</a>{% else %}—{% endif %}</dd>
-            <dt class="col-sm-3 text-muted">Последняя активность</dt><dd class="col-sm-9">{{ asset.last_seen_at.strftime('%Y-%m-%d %H:%M') if asset.last_seen_at else '—' }}</dd>
+            <dt class="col-sm-3 text-muted">Последняя активность</dt><dd class="col-sm-9">{{ asset.last_seen_at | format_local_time if asset.last_seen_at else '—' }}</dd>
             {% if asset.current_user %}
             <dt class="col-sm-3 text-muted">Пользователь (кто использует)</dt><dd class="col-sm-9">{{ asset.current_user }}</dd>
             {% endif %}
@@ -239,7 +239,7 @@
                 <tbody>
                     {% for e in events %}
                     <tr{% if e.event_type.value == 'deleted' %} class="table-danger"{% endif %}>
-                        <td>{{ e.created_at.strftime('%Y-%m-%d %H:%M') if e.created_at else '—' }}</td>
+                        <td>{{ e.created_at | format_local_time or '—' }}</td>
                         <td><span class="badge {% if e.event_type.value == 'deleted' %}bg-danger{% else %}bg-info{% endif %}">{{ event_type_labels.get(e.event_type.value, e.event_type.value) if event_type_labels else e.event_type.value }}</span></td>
                         <td>{{ e.description or '—' }}</td>
                         <td>

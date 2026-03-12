@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Часовой пояс (UTC) — Система учёта оборудования{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="card-title">Часовой пояс (UTC)</h1>
+    <div>
+        <a href="{{ request.url_for('admin_users') }}" class="btn btn-outline-secondary">Пользователи</a>
+        <a href="{{ request.url_for('admin_backups') }}" class="btn btn-outline-secondary">Бекапы</a>
+        <a href="{{ request.url_for('dashboard') }}" class="btn btn-outline-secondary">На дашборд</a>
+    </div>
+</div>
+<p class="text-muted">Выберите часовой пояс для отображения дат и времени в системе (история изменений, журнал перемещений, последняя активность и т.д.). Значения в базе хранятся в UTC; при выводе они переводятся в выбранный пояс.</p>
+
+<form method="get" action="{{ request.url_for('set_timezone') }}" id="tz-form">
+    <div class="row align-items-end">
+        <div class="col-auto">
+            <label class="form-label">Текущий часовой пояс</label>
+            <select name="offset" class="form-select" style="min-width: 220px;" onchange="this.form.submit()">
+                {% for t in timezone_options %}
+                <option value="{{ t.offset }}" {% if get_display_tz_offset() == t.offset %}selected{% elif get_display_tz_offset() is none and t.offset == 3 %}selected{% endif %}>{{ t.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary">Применить</button>
+        </div>
+    </div>
+</form>
+
+<p class="small text-muted mt-3">Выбор сохраняется в cookie и действует для вашего браузера. Рекомендуется выбрать пояс вашего региона (например, Екатеринбург UTC+5).</p>
+{% endblock %}

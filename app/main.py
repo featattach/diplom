@@ -7,6 +7,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import HTTPException
 
 from app.database import engine, Base, get_db
+from app.templates_ctx import _request_ctx
+from app.constants import TIMEZONE_OPTIONS
 from app.routers import (
     auth_router,
     dashboard_router,
@@ -33,6 +35,33 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Asset Management", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def set_request_context(request: Request, call_next):
+    """Сохраняем request в contextvar, чтобы фильтр format_local_time мог прочитать cookie."""
+    token = _request_ctx.set(request)
+    try:
+        return await call_next(request)
+    finally:
+        _request_ctx.reset(token)
+
+
+@app.get("/set-timezone", name="set_timezone", include_in_schema=False)
+def set_timezone(
+    request: Request,
+    offset: str | None = None,
+):
+    """
+    Устанавливает cookie с выбранным смещением часового пояса (UTC+offset) и перенаправляет обратно.
+    offset — целое число часов, например 3 (Москва) или 5 (Екатеринбург).
+    """
+    allowed = {str(t["offset"]) for t in TIMEZONE_OPTIONS}
+    if offset and offset in allowed:
+        response = RedirectResponse(url=request.headers.get("referer", "/"), status_code=302)
+        response.set_cookie(key="display_tz_offset", value=offset, max_age=365 * 24 * 3600, path="/")
+        return response
+    return RedirectResponse(url=request.headers.get("referer", "/"), status_code=302)
 
 
 def _accepts_html(request: Request) -> bool:

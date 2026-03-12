@@ -223,6 +223,21 @@ async def admin_user_edit(
 
 # ——— Бекапы ———
 
+@router.get("/admin/timezone", name="admin_timezone", include_in_schema=False)
+async def admin_timezone_page(
+    request: Request,
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Страница выбора часового пояса для отображения дат и времени в интерфейсе."""
+    return templates.TemplateResponse(
+        "admin_timezone.html",
+        {
+            "request": request,
+            "user": current_user,
+        },
+    )
+
+
 @router.get("/admin/backups", name="admin_backups", include_in_schema=False)
 async def admin_backups_page(
     request: Request,
