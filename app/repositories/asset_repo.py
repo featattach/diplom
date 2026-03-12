@@ -165,12 +165,12 @@ async def get_asset_by_id_with_relations(
     db: AsyncSession,
     asset_id: int,
 ) -> Asset | None:
-    """Актив по id с загрузкой events, company, inventory_items."""
+    """Актив по id с загрузкой events (и автора каждого события), company, inventory_items."""
     result = await db.execute(
         select(Asset)
         .where(Asset.id == asset_id)
         .options(
-            selectinload(Asset.events),
+            selectinload(Asset.events).selectinload(AssetEvent.created_by),
             selectinload(Asset.company),
             selectinload(Asset.inventory_items),
         )
@@ -271,10 +271,13 @@ async def get_company_asset_summary(
 
 
 async def get_recent_asset_events(db: AsyncSession, limit: int = 500) -> list[AssetEvent]:
-    """Последние события по активам с загрузкой актива (для страницы перемещений)."""
+    """Последние события по активам с загрузкой актива и автора (для страницы перемещений)."""
     result = await db.execute(
         select(AssetEvent)
-        .options(selectinload(AssetEvent.asset))
+        .options(
+            selectinload(AssetEvent.asset),
+            selectinload(AssetEvent.created_by),
+        )
         .order_by(AssetEvent.created_at.desc())
         .limit(limit)
     )

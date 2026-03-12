@@ -111,3 +111,4 @@ class AssetEvent(Base):
     changes_json: Mapped[str] = mapped_column(Text, nullable=True)
 
     asset: Mapped["Asset"] = relationship("Asset", back_populates="events")
+    created_by: Mapped["User"] = relationship("User", foreign_keys=[created_by_id])

@@ -10,6 +10,7 @@
                 <th>Дата</th>
                 <th>Тип события</th>
                 <th>Оборудование</th>
+                <th>Автор</th>
                 <th>Комментарий</th>
                 <th>Изменения (было → стало)</th>
             </tr>
@@ -20,6 +21,7 @@
                 <td>{{ e.created_at | format_local_time or '—' }}</td>
                 <td><span class="badge {% if e.event_type.value == 'deleted' %}bg-danger{% else %}bg-info{% endif %}">{{ event_type_label(e.event_type) }}</span></td>
                 <td>{% if e.asset %}<a href="{{ request.url_for('asset_detail', asset_id=e.asset.id) }}">{{ e.asset.name }}</a>{% else %}—{% endif %}</td>
+                <td>{{ e.created_by.username if e.created_by else '—' }}</td>
                 <td>{{ e.description or '—' }}</td>
                 <td>
                     {% if e.changes_list %}
@@ -34,7 +36,7 @@
                 </td>
             </tr>
             {% else %}
-            <tr><td colspan="5" class="text-muted">Нет записей</td></tr>
+            <tr><td colspan="6" class="text-muted">Нет записей</td></tr>
             {% endfor %}
         </tbody>
     </table>

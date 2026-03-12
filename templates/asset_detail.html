@@ -232,6 +232,7 @@
                     <tr>
                         <th>Дата</th>
                         <th>Тип события</th>
+                        <th>Автор</th>
                         <th>Описание</th>
                         <th>Изменения (было → стало)</th>
                     </tr>
@@ -241,6 +242,7 @@
                     <tr{% if e.event_type.value == 'deleted' %} class="table-danger"{% endif %}>
                         <td>{{ e.created_at | format_local_time or '—' }}</td>
                         <td><span class="badge {% if e.event_type.value == 'deleted' %}bg-danger{% else %}bg-info{% endif %}">{{ event_type_labels.get(e.event_type.value, e.event_type.value) if event_type_labels else e.event_type.value }}</span></td>
+                        <td>{{ e.created_by.username if e.created_by else '—' }}</td>
                         <td>{{ e.description or '—' }}</td>
                         <td>
                             {% if e.changes_list %}
@@ -255,7 +257,7 @@
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="4" class="text-muted">Нет событий</td></tr>
+                    <tr><td colspan="5" class="text-muted">Нет событий</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
